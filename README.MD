@@ -4,14 +4,14 @@
 ``` 
 
 Retorno esperado:
-`````
+`
 
 Start (implementando LXC no Boot):
  [OK] Unit criada e habilitada: lxc-machine-boot.service
  [OK] Ordem de boot garantida: storage preparado antes do LXC
 
 
-`````
+`
 
 Isto confirma que todos os recursos já estão configurados e disponiveis, para uso imediato. <BR>
 Basta enviar "```` LXC ````" ou "```` lxc ````" ao terminal, para criar sua primeira maquina. <BR>
