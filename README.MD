@@ -16,7 +16,7 @@ Start (implementando LXC no Boot):
 Isto confirma que todos os recursos já estão configurados e disponiveis, para uso imediato.
 Basta enviar "```` LXC ````" ao terminal, para criar sua primeira maquina.
 
-\* Apezar de obveo, não custa lembrar: <STRONG style="color:#00FFFF;"> Não use espaço ao nomear um novo servidor!</STRONG>
+\* Apezar de obveo, não custa lembrar: <strong style="color:#800020;">Não use espaço ao nomear um novo servidor!</strong>
 
 Por questões de segurança. Este script e seus recursos, só estarão disponíveis ao root e ususários elevados.
 
