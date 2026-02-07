@@ -1,7 +1,7 @@
 #!/bin/bash
 # /lxc_machine.sh - versão: 0.01. Cria e adminitra container LXC + LV thin + migração rootfs
 #
-# Para edição rápida use:
+# Para edição rápida use (isto abrirá o arquivo em branco):
 #    echo > /lxc_machine.sh; nano /lxc_machine.sh
 #
 # Para instalar LXC Clasico (apenas se necessário), use:
