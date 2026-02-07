@@ -4,11 +4,14 @@
 # Para edição rápida use (isto abrirá o arquivo em branco):
 #    echo > /lxc_machine.sh; nano /lxc_machine.sh
 #
+#
+# Para instalar o script em / (root é obrigatório). Verificando se LXC esta presente, use:
+#     (dpkg -s lxc >/dev/null 2>&1 || { apt update -y >/dev/null 2>/dev/stderr && apt install lxc -y >/dev/null 2>/dev/stderr; }) && curl -sSL https://raw.githubusercontent.com/srvictorbatista/lxcMachine/refs/heads/main/lxc_machine.sh -o ./lxc_machine.sh && chmod +x ./lxc_machine.sh && ./lxc_machine.sh start
+#
+#
 # Para instalar LXC Clasico (apenas se necessário), use:
 #    apt install lxc -y
 #
-# Listar binarios LXC disponiveis
-#    ls /usr/bin/lxc* | sed 's|/usr/bin/||; s|^| |; s|$| |' | column -c 100 | while read -r line; do echo -e "\e[32;48;5;233m$line\e[0m"; done
 
 set -euo pipefail && shopt -s nocasematch
 
