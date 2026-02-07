@@ -16,7 +16,7 @@ Start (implementando LXC no Boot):
 ```````
 
 Isto confirma que todos os recursos já estão configurados e disponíveis, para uso imediato. <BR>
-Basta enviar "```` LXC ````" ou "```` lxc ````" ao terminal, para criar sua primeira maquina. <BR>
+Basta enviar "```` LXC ````" ou "```` lxc ````" ao terminal, para criar sua primeira máquina. <BR>
 \* **Não use espaço ao nomear um novo servidor**❗
 
 Por questões de segurança; Este script e seus recursos, só estarão disponíveis ao root e usuários elevados. Recomendo não alterar esta política.
