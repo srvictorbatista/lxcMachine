@@ -17,7 +17,7 @@ Isto confirma que todos os recursos já estão configurados e disponiveis, para 
 Basta enviar "```` LXC ````" ao terminal, para criar sua primeira maquina. <BR>
 \* **Não use espaço ao nomear um novo servidor**❗
 
-Por questões de segurança. Este script e seus recursos, só estarão disponíveis ao root e ususários elevados.
+Por questões de segurança; Este script e seus recursos, só estarão disponíveis ao root e ususários elevados. Recomando não alterar esta política.
 
 
 
