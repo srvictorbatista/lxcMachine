@@ -228,25 +228,25 @@ hostOnlyNetWorkBridge(){
 
 # Configura DNSMASQ apenas na interface criada:
 cat >/etc/dnsmasq.d/lxcbr0.conf <<EOF
-interface=${BRIDGE_NAME}           # Escuta apenas na bridge host-only, evita interferir na rede física
-bind-interfaces                    # Força o dnsmasq a usar apenas a interface especificada
-dhcp-range=172.16.0.2,172.16.0.254,12h  # Faixa de IPs que o DHCP pode fornecer aos contêineres, lease de 12h
-dhcp-option=3,${HOST_IP%/*}        # Define gateway padrão dos contêineres como IP do host (${HOST_IP%/*})
-dhcp-option=6,${DNS_EXT01},${DNS_EXT02}      # Define DNS externo para os contêineres
+interface=${BRIDGE_NAME}                        # Escuta apenas na bridge host-only, evita interferir na rede física
+bind-interfaces                                 # Força o dnsmasq a usar apenas a interface especificada
+dhcp-range=172.16.0.2,172.16.0.254,12h          # Faixa de IPs que o DHCP pode fornecer aos contêineres, lease de 12h
+dhcp-option=3,${HOST_IP%/*}                     # Define gateway padrão dos contêineres como IP do host (${HOST_IP%/*})
+dhcp-option=6,${DNS_EXT01},${DNS_EXT02}         # Define DNS externo para os contêineres
 
 # O parâmetro server só funciona se a variável DNS_EXT01 estiver definida; senão, comente ou use IP real
-server=${DNS_EXT01}                  # DNS1 externo para resoluções de nomes fora da rede host-only. 
-server=${DNS_EXT02}                  # DNS2 externo para resoluções de nomes fora da rede host-only. 
+server=${DNS_EXT01}                             # DNS1 externo para resoluções de nomes fora da rede host-only. 
+server=${DNS_EXT02}                             # DNS2 externo para resoluções de nomes fora da rede host-only. 
 
-# Lista de resoluções de nomes/IP fixos dentro da rede host-only
-address=/${HOST_NAME}/${HOST_IP%/*}        # Resolve ${HOST_NAME} para o IP do host (${HOST_IP%/*})
-address=/srv02.zapsrv.com/${HOST_IP%/*}   # Resolve srv02.zapsrv.com para o IP do host
+# Lista DNS de resoluções de nomes/IP fixos dentro da rede host-only (adicione quantos desejar ou comente, se preferir desabilitar)
+address=/${HOST_NAME}/${HOST_IP%/*}             # Resolve ${HOST_NAME} para o IP do host (${HOST_IP%/*})
+address=/seu_dominio_adicional/${HOST_IP%/*}    # Resolve dominio adicional para o IP do host
 
-listen-address=${HOST_IP%/*}        # Escuta apenas no IP da bridge, não nas outras interfaces do host
-no-resolv                           # Ignora /etc/resolv.conf do host, evita conflitos de DNS
-no-hosts                            # Ignora /etc/hosts do host, usa apenas as regras dnsmasq
-log-queries                         # Ativa logs de consulta DNS, útil para depuração
-log-facility=/var/log/dnsmasq-lxc.log  # Define arquivo de log exclusivo para dnsmasq da bridge
+listen-address=${HOST_IP%/*}                    # Escuta apenas no IP da bridge, não nas outras interfaces do host
+no-resolv                                       # Ignora /etc/resolv.conf do host, evita conflitos de DNS
+no-hosts                                        # Ignora /etc/hosts do host, usa apenas as regras dnsmasq
+log-queries                                     # Ativa logs de consulta DNS, útil para depuração
+log-facility=/var/log/dnsmasq-lxc.log           # Define arquivo de log exclusivo para dnsmasq da bridge
 EOF
 
 
