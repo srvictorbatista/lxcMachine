@@ -6,7 +6,7 @@
 #
 #
 # Para instalar o script em / (root é obrigatório). Verificando se LXC esta presente, use:
-#     (dpkg -s lxc >/dev/null 2>&1 || { apt update -y >/dev/null 2>/dev/stderr && apt install lxc -y >/dev/null 2>/dev/stderr; }) && curl -sSL https://raw.githubusercontent.com/srvictorbatista/lxcMachine/refs/heads/main/lxc_machine.sh -o ./lxc_machine.sh && chmod +x ./lxc_machine.sh && ./lxc_machine.sh start
+#     (dpkg -s lxc >/dev/null 2>&1 || { apt update -y >/dev/null 2>/dev/stderr && apt install lxc -y >/dev/null 2>/dev/stderr; }) && curl -sSL https://raw.githubusercontent.com/srvictorbatista/lxcMachine/refs/heads/main/lxc_machine.sh -o /lxc_machine.sh && chmod +x /lxc_machine.sh && /lxc_machine.sh start
 #
 #
 # Para instalar LXC Clasico (apenas se necessário), use:
