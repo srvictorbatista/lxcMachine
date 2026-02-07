@@ -13,7 +13,7 @@ Start (implementando LXC no Boot):
 
 ````
 
-Isto confirma que todos os recursos já estão configurados e disponiveis, para uso imediato.
+Isto confirma que todos os recursos já estão configurados e disponiveis, para uso imediato. <BR>
 Basta enviar "```` LXC ````" ao terminal, para criar sua primeira maquina. <BR>
 \* **Não use espaço ao nomear um novo servidor**❗
 
