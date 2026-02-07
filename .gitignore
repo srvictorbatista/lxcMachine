@@ -1,0 +1,21 @@
+# Ignora todos os arquivos e pastas. 
+* 
+
+# Percorre subpastas
+!*/
+
+
+
+
+
+
+
+# Lista de arquivos autorizados: 
+!**/lxc_machine.sh
+!README.md
+!.gitignore
+
+
+
+
+
