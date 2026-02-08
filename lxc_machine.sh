@@ -1,11 +1,17 @@
 #!/bin/bash
 # /lxc_machine.sh - versão: 0.01. Cria e adminitra container LXC + LV thin + migração rootfs
 #
+#
+#
+#
 # Para edição rápida use (isto abrirá o arquivo em branco):
 #    echo > /lxc_machine.sh; nano /lxc_machine.sh
 #
-# Realizar backup em segundo plano (mesmo aopos fechar terminal):
+# Realizar backup em segundo plano (mesmo após fechar terminal, ou via cron):
 #     nohup /lxc_machine.sh backup <nome> > /lxc/backup/back_<nome>.log 2>&1 &
+#
+# Para confirmar se o backup esta em andamento, em segundo plano: 
+#      ps aux | grep '[l]xc_machine.sh backup <nome>' &&  tail -f /lxc/backup/back_<nome>.log
 #
 #
 # Para instalar o script em / (root é obrigatório). Verificando se LXC esta presente, use:
