@@ -515,6 +515,8 @@ properties:
   root_gid: 0
 EOF
 
+        START_TIME=$(date +%s)
+
         echo -e "\nPausando serviços e preparando backup: "
 
         # Cria diretório padrão de backup seguro
@@ -543,7 +545,6 @@ EOF
         # Congela LXC apenas após Docker parado
         lxc-freeze -n "$MACHINE_NAME" -P "$LXC_DIR" || { echo -e "${RED}[ERRO] Falha ao congelar LXC \"$MACHINE_NAME\" ${NC}"; exit 1; }
 
-        START_TIME=$(date +%s)
 
         echo -e "\nGerando arquivo de restauração: \n* \"${LXC_BACKUP_FILE}\" \nProcesso iniciado em $(date '+%F %T'). Isto pode levar vários minutos. \nPor favor, aguarde... \n"
 
