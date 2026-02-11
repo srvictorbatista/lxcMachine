@@ -620,7 +620,8 @@ reborn(){
             exit 1
         fi
  
-        START_TIME=$(date +%s)
+        #START_TIME=$(date +%s)
+        : "${START_TIME:=$(date +%s)}"
         echo "Verificando integridade do arquivo de backup..."
 
         # Verifica se é um arquivo tar válido e íntegro: Verificando se existe a pasta /etc dentro de qualquer subdiretório
@@ -1064,6 +1065,8 @@ if [[ -d "$LXC_DIR/$MACHINE_NAME" || -d "/var/lib/lxc/$MACHINE_NAME" ]]; then
 
       ACTIVE_FILE="${bk%-backup-*}-active-$(basename "$bk" | cut -d'-' -f3).txt"
       echo -e "\n\nRestaurando $MACHINE_NAME a partir do back-up: "
+      
+      START_TIME=$(date +%s)
 
       # Desmontando volumes
       set +e
