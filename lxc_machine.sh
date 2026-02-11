@@ -516,6 +516,7 @@ properties:
 EOF
 
         START_TIME=$(date +%s)
+        
 
         echo -e "\nPausando serviços e preparando backup: "
 
