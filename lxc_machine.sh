@@ -1414,7 +1414,7 @@ lxc-attach -n "$MACHINE_NAME" -P "$LXC_DIR" -- bash -lc "
 set -e
 export DEBIAN_FRONTEND=noninteractive
 { apt-get update -qq >/dev/null 2>&1 && apt-get upgrade -qq -y >/dev/null 2>&1; } || true
-apt-get install -y --no-install-recommends openssh-server nano curl ca-certificates gnupg lsb-release dos2unix dmidecode htop zip unzip acl net-tools bsdmainutils util-linux dnsutils >/dev/null 2>&1 || { echo \"Erro ao instalar pacotes\"; true;}
+apt-get install -y --no-install-recommends openssh-server nano curl ca-certificates gnupg lsb-release dos2unix dmidecode htop zip unzip acl net-tools bsdmainutils util-linux dnsutils ncdu >/dev/null 2>&1 || { echo \"Erro ao instalar pacotes\"; true;}
 
 # habilita ssh e garante unit
 systemctl unmask ssh >/dev/null 2>&1 || { echo \"Erro ao desbloquear ssh\"; true;}
