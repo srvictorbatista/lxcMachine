@@ -844,6 +844,10 @@ if [[ "$(id -u)" -ne 0 ]]; then err "Execute como root"; exit 1; fi
 mkdir -p "$LXC_DIR"
 
 
+# Mapear usuários em contêineres rootless (apenas se necessário)
+grep -q '^root:100000:65536' /etc/subuid 2>/dev/null || echo 'root:100000:65536' >> /etc/subuid; grep -q '^root:165536:65536' /etc/subuid 2>/dev/null || echo 'root:165536:65536' >> /etc/subuid; grep -q '^root:100000:65536' /etc/subgid 2>/dev/null || echo 'root:100000:65536' >> /etc/subgid; grep -q '^root:165536:65536' /etc/subgid 2>/dev/null || echo 'root:165536:65536' >> /etc/subgid
+
+
 
 
 
