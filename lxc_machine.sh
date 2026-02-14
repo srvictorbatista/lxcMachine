@@ -1616,15 +1616,16 @@ echo " ➤      SERVIDOR: [ $MACHINE_NAME ]"
 ImgSistDef=4.002
 read -r DT DU DA <<< $(df -BG --output=size,used,avail / 2>/dev/null | tail -n1 | awk '{gsub("G","",$0); print $1,$2,$3}')
 LV_TOTAL=$(awk -v t="$DT" -v i="$ImgSistDef" 'BEGIN{printf "%.2f", t+i}'); LV_FREE="$DA"; LV_USED=$(awk -v t="$LV_TOTAL" -v f="$LV_FREE" 'BEGIN{printf "%.2f", t-f}'); LV_PERC=$(awk -v u="$LV_USED" -v t="$LV_TOTAL" 'BEGIN{printf "%.1f", (u/t)*100}')
-printf "\033[37;100m Armazenamento Principal:            \033[0m\nTOTAL\tEm Uso\tUso%%\tDisponível\n%sG\t%sG\t%s%%\t%sG\n" "$LV_TOTAL" "$LV_USED" "$LV_PERC" "$LV_FREE"
+printf "\033[37;100m Armazenamento Principal:                    \033[0m\nTOTAL\tEm Uso\tUso%%\tDisponível\n%sG\t%sG\t%s%%\t%sG\n" "$LV_TOTAL" "$LV_USED" "$LV_PERC" "$LV_FREE"
 MEM_MAX_FILE=/sys/fs/cgroup/memory.max; MEM_CUR_FILE=/sys/fs/cgroup/memory.current
 if [[ -f "$MEM_MAX_FILE" && -f "$MEM_CUR_FILE" ]]; then RAM_TOTAL=$(awk '{if($1=="max"){t=0} else t=$1; printf "%.2f", t/1073741824}' "$MEM_MAX_FILE"); RAM_USED=$(awk '{printf "%.2f", $1/1073741824}' "$MEM_CUR_FILE"); RAM_DISP=$(awk -v t="$RAM_TOTAL" -v u="$RAM_USED" 'BEGIN{if(t>0) printf "%.2f", t-u; else printf "%.2f", u}'); else RAM_TOTAL=$(free -b | awk '/Mem:/ {printf "%.2f",$2/1e9}'); RAM_DISP=$(free -b | awk '/Mem:/ {printf "%.2f",$7/1e9}'); fi
-printf "\033[37;100m RAM TOTAL: %sGb | RAM DISP.: %.2fGb\033[0m\n" "$RAM_TOTAL" "$RAM_DISP"
-MODS=($(dmidecode -t memory | awk -F: '/Size:/ && $2!~/No Module/ {gsub(/^[ \t]+/,"",$2); gsub(/[^0-9A-Za-z]/,"",$2); sub(/GB$/,"Gb",$2); sub(/B$/,"b",$2); print $2}')); NUM_MODS=${#MODS[@]}
-if (( NUM_MODS > 1 )); then for i in "${!MODS[@]}"; do MOD_VAL=$(awk -v total="$RAM_TOTAL" -v n="$NUM_MODS" 'BEGIN{printf "%.2fGb", total/n}'); SEP=$', '; (( i == NUM_MODS-1 )) && SEP=$'\n'; printf "%dº Módulo: %s%s" $((i+1)) "$MOD_VAL" "$SEP"; done
-elif (( NUM_MODS == 1 )); then printf "1º Módulo: %.2fGb\n" "$RAM_TOTAL"; fi
-export IP=$(hostname -I | awk '{print $1}' | cut -d ':' -f 1)
+printf "\033[37;100m%-45s\033[0m\n" "$(printf " RAM TOTAL: %sGb | RAM DISP.: %.2fGb " "$RAM_TOTAL" "$RAM_DISP")"
 
+# EXIBE MODULOS FISICOS (apenas se privilegiado)
+MODS=($(dmidecode -t memory 2>/dev/null | awk -F: '/Size:/ && $2!~/No Module/ {gsub(/^[ \t]+/,"",$2); gsub(/[^0-9A-Za-z]/,"",$2); sub(/GB$/,"Gb",$2); sub(/B$/,"b",$2); print $2}')); NUM_MODS=${#MODS[@]}; if (( NUM_MODS > 1 )); then for i in "${!MODS[@]}"; do MOD_VAL=$(awk -v total="$RAM_TOTAL" -v n="$NUM_MODS" 'BEGIN{printf "%.2fGb", total/n}'); SEP=$', '; (( i == NUM_MODS-1 )) && SEP=$'\n'; printf "%dº Módulo: %s%s" $((i+1)) "$MOD_VAL" "$SEP"; done; elif (( NUM_MODS == 1 )); then printf "1º Módulo: %.2fGb\n" "$RAM_TOTAL"; fi; export IP=$(hostname -I | awk '{print $1}' | cut -d ':' -f 1)
+
+# USO DE RAM, SWAP E TOTAL DISP
+awk -v m=$(cat /sys/fs/cgroup/memory.max 2>/dev/null) -v s=$(cat /sys/fs/cgroup/memory.swap.max 2>/dev/null) -v u=$(cat /sys/fs/cgroup/memory.current 2>/dev/null) 'BEGIN{sw=u>m?u-m:0; USO=sprintf(" RAM USO: %.2fGb | SWAP USO: %.2fGb", u/1024/1024/1024, sw/1024/1024/1024); USO=substr(USO "                      ",1,45); DISP=sprintf("RAM TOTAL MAX DISP: %.2fGb", (m+s)/1024/1024/1024); printf "\033[48;5;240m\033[38;5;250m%s\033[0m\n%s\n", USO, DISP}'
 #-- ------------------------------------------------------------
 echo -e "\n\n"
 
@@ -1636,7 +1637,15 @@ bind -x '"\C-l": "clear && source ~/.bashrc"'
 alias docker-compose='docker compose'
 
 # Logar na raiz
-cd /
+#cd /
+
+# Logar em SFTP-SSH
+#cd  /etc/ssh/SFTP-SSH
+
+# Logar em /srv
+cd /srv
+
+
 
 # Caracteres especiais
 export LANG="pt_BR.utf8"
