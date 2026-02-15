@@ -876,7 +876,7 @@ EOL
       # Obtém o IPv4 da interface lxcbr0 do container, se nao encontrar tenta br0
       IP=""; for i in $(seq 1 $IP_WAIT_RETRIES); do IP=$(lxc-attach -n "$MACHINE_NAME" -P /lxc -- ip -4 -o addr show eth1 2>/dev/null | awk '{split($4,a,"/"); print a[1]}'); [[ -n "$IP" && "$IP" != "-" ]] && break; sleep 2; done; [[ -z "$IP" || "$IP" == "-" ]] && { IP=$(lxc-attach -n "$MACHINE_NAME" -P /lxc -- ip -4 -o addr show eth0 2>/dev/null | awk '{split($4,a,"/"); print a[1]}'); [[ -z "$IP" || "$IP" == "-" ]] && { echo -e "\e[97;41m[ERRO] Não foi possível obter IP da maquina $MACHINE_NAME \e[0m"; exit 1; }; }
 
-      echo -e "\e[38;5;250;48;5;17m $MACHINE_NAME disponível em $IP \e[0m\n"
+      echo -e "\e[38;5;250;48;5;17m $MACHINE_NAME isolado e disponível em $IP \e[0m\n"
 
       echo; exit 0
 }
