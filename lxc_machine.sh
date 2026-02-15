@@ -873,11 +873,11 @@ EOL
       # Ajusta permissões do rootfs para o mapeamento de usuário
       chown -R 100000:100000 "$ROOTFS_PATH"
 
-      # Reinicia o container
-      lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null; sleep 1
-      lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
+      # Ajuste de sudo (semi-privilegiado)
+      lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null; chown -R 100000:100000 $LXC_DIR/KAMAKISHIA/rootfs; chown 100000:100000 $LXC_DIR/KAMAKISHIA/rootfs; chmod 755 $LXC_DIR/KAMAKISHIA/rootfs
+      sleep 1; lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
+      lxc-attach -n "$MACHINE_NAME" -P /lxc -- bash -c "apt update; apt install --reinstall sudo -y; chown root:root /etc/sudo.conf; chmod 644 /etc/sudo.conf; chown root:root /usr/bin/sudo; chmod 4755 /usr/bin/sudo; ls -l /usr/bin/sudo /etc/sudo.conf"
 
-      # Aguarda container subir
       sleep 2
 
       # Obtém o IPv4 da interface lxcbr0 do container, se nao encontrar tenta br0
