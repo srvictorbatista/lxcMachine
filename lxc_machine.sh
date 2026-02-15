@@ -841,9 +841,12 @@ lxc.start.auto = 1
 lxc.start.delay = 2
 
 # Limites de RAM e SWAP
-lxc.cgroup2.memory.max = 4G
-lxc.cgroup2.memory.high = 4G
-lxc.cgroup2.memory.swap.max = 0
+lxc.cgroup2.memory.max = ${DEFAULT_RAM_MEM}
+lxc.cgroup2.memory.high = ${DEFAULT_RAM_MEM}
+lxc.cgroup2.memory.swap.max = ${DEFAULT_RAM_SWAP}
+
+
+
 
 ######################################
 # Cliente semi-privilegiado
