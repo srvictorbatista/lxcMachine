@@ -790,17 +790,21 @@ SCANER(){
 
 
 ISOLE(){ # ISOLA MAQUINA EXISTENTE EM UM AMBIENTE ISOLADO DO ROOT DO HOST
-    MACHINE_NAME="$1"  # Nome da máquina
-    CONFIG_PATH="$LXC_DIR/$MACHINE_NAME/config"
-    ROOTFS_PATH="$LXC_DIR/$MACHINE_NAME/rootfs"
+      MACHINE_NAME="${1:-}"   # Garante que não seja "unbound"
+      MACHINE_NAME="${MACHINE_NAME^^}"      # Converte para maiúsculas
 
-    # Verifica se a máquina existe
-    [ ! -d "$LXC_DIR/$MACHINE_NAME" ] && { echo " Máquina $MACHINE_NAME não encontrada"; return 1; }
+      # Verifica se foi informado o nome da máquina
+      [ -z "$MACHINE_NAME" ] && { echo -e "\n\033[1;93m\033[40m[INFO] Para isolar uma máquina existente, o nome da máquina é obrigatório. \033[0m"; return 1; }
+      CONFIG_PATH="$LXC_DIR/$MACHINE_NAME/config"
+      ROOTFS_PATH="$LXC_DIR/$MACHINE_NAME/rootfs"
 
-    echo -e " Aguarde... "
+      # Verifica se a máquina existe
+      [ ! -d "$LXC_DIR/$MACHINE_NAME" ] && { echo " Máquina $MACHINE_NAME não encontrada"; return 1; }
 
-    # Substitui o config completamente
-    cat > "$CONFIG_PATH" <<EOL
+      echo -e " Aguarde... "
+
+      # Substitui o config completamente
+      cat > "$CONFIG_PATH" <<EOL
 lxc.rootfs.path = dir:$LXC_DIR/$MACHINE_NAME/rootfs
 lxc.uts.name = $MACHINE_NAME
 
@@ -859,23 +863,22 @@ lxc.apparmor.allow_nesting = 1
 ######################################
 EOL
 
-    # Ajusta permissões do rootfs para o mapeamento de usuário
-    chown -R 100000:100000 "$ROOTFS_PATH"
+      # Ajusta permissões do rootfs para o mapeamento de usuário
+      chown -R 100000:100000 "$ROOTFS_PATH"
 
-    # Reinicia o container
-    lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null; sleep 1
-    lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
+      # Reinicia o container
+      lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null; sleep 1
+      lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
 
-    # Aguarda container subir
-    sleep 2
+      # Aguarda container subir
+      sleep 2
 
-    # Obtém o IPv4 da interface lxcbr0 do container
-    #IP=$(echo "$(lxc-info -n "$MACHINE_NAME" -P $LXC_DIR -iH | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')" | grep '^172\.16\.' | tail -n1)
-    IP=""; LXC_NET="^172\.16\."; for i in {1..10}; do IP=$(lxc-info -n "$MACHINE_NAME" -P $LXC_DIR -iH | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | grep "$LXC_NET" | tail -n1); [ -n "$IP" ] && break; sleep 2; done; [ -z "$IP" ] && echo -e "\e[97;41mNão foi possível obter o IP de $MACHINE_NAME\e[0m"
+      # Obtém o IPv4 da interface lxcbr0 do container, se nao encontrar tenta br0
+      IP=""; for i in $(seq 1 $IP_WAIT_RETRIES); do IP=$(lxc-attach -n "$MACHINE_NAME" -P /lxc -- ip -4 -o addr show eth1 2>/dev/null | awk '{split($4,a,"/"); print a[1]}'); [[ -n "$IP" && "$IP" != "-" ]] && break; sleep 2; done; [[ -z "$IP" || "$IP" == "-" ]] && { IP=$(lxc-attach -n "$MACHINE_NAME" -P /lxc -- ip -4 -o addr show eth0 2>/dev/null | awk '{split($4,a,"/"); print a[1]}'); [[ -z "$IP" || "$IP" == "-" ]] && { echo -e "\e[97;41m[ERRO] Não foi possível obter IP da maquina $MACHINE_NAME \e[0m"; exit 1; }; }
 
-    echo -e "\e[38;5;250;48;5;17m $MACHINE_NAME disponível em $IP \e[0m\n"
+      echo -e "\e[38;5;250;48;5;17m $MACHINE_NAME disponível em $IP \e[0m\n"
 
-    echo; exit 0
+      echo; exit 0
 }
 
 
