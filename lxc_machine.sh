@@ -859,14 +859,20 @@ lxc.idmap = g 0 100000 65536
 lxc.include = /usr/share/lxc/config/common.conf
 lxc.include = /usr/share/lxc/config/userns.conf
 
-# permitir dispositivos
+# Permitir dispositivos
 lxc.cgroup2.devices.allow = a
 
-# manter todas as capabilities dentro do namespace
+# Manter todas as capabilities dentro do namespace
 lxc.cap.drop =
 
-# permitir criação de tmpfs necessários ao systemd
+# Permitir criação de tmpfs necessários ao systemd
 lxc.apparmor.allow_nesting = 1
+
+
+# Permitir DOCKER e docker compose
+lxc.mount.auto = proc:rw sys:rw cgroup:rw
+lxc.cap.drop =
+lxc.mount.entry = /dev/fuse dev/fuse none bind,create=file 0 0
 ######################################
 EOL
 
@@ -874,7 +880,7 @@ EOL
       chown -R 100000:100000 "$ROOTFS_PATH"
 
       # Ajuste de sudo (semi-privilegiado)
-      lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null; chown -R 100000:100000 $LXC_DIR/KAMAKISHIA/rootfs; chown 100000:100000 $LXC_DIR/KAMAKISHIA/rootfs; chmod 755 $LXC_DIR/KAMAKISHIA/rootfs
+      lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null; chown -R 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs; chown 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs; chmod 755 $LXC_DIR/$MACHINE_NAME/rootfs
       sleep 1; lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
       lxc-attach -n "$MACHINE_NAME" -P /lxc -- bash -c "apt update; apt install --reinstall sudo -y; chown root:root /etc/sudo.conf; chmod 644 /etc/sudo.conf; chown root:root /usr/bin/sudo; chmod 4755 /usr/bin/sudo; ls -l /usr/bin/sudo /etc/sudo.conf"
 
