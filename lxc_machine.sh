@@ -801,6 +801,10 @@ ISOLE(){ # ISOLA MAQUINA EXISTENTE EM UM AMBIENTE ISOLADO DO ROOT DO HOST
       # Verifica se a máquina existe
       [ ! -d "$LXC_DIR/$MACHINE_NAME" ] && { echo " Máquina $MACHINE_NAME não encontrada"; return 1; }
 
+      echo -e "\n\e[38;5;166m [AVISO]: Este comando confinará a \"${MACHINE_NAME}\" em um ambiente isolado do root do host. \n Se você não tem certeza que deseja fazer isto, recomenda-se back-up. \e[0m"
+      read -p $'\n Você tem certeza que deseja prosseguir? [s/n]: ' RESP; RESP=${RESP:-n}; [[ "$RESP" =~ ^[sSyY]$ ]] || { echo -e " Operação cancelada. \n"; exit 1; }
+
+
       echo -e " Aguarde... "
 
       # Substitui o config completamente
