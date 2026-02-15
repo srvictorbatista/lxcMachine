@@ -296,7 +296,7 @@ for M in $(lxc-ls -1 -P /lxc); do
   rm -f "/lxc/$M/rootfs/etc/resolv.conf" && touch "/lxc/$M/rootfs/etc/resolv.conf" && cp "/etc/lxc/resolv-dnsmasq.conf" "/lxc/$M/rootfs/etc/resolv.conf" && cp "/etc/lxc/50-${BRIDGE_NAME}.yaml" "/lxc/$M/rootfs/etc/netplan/50-${BRIDGE_NAME}.yaml"; 
 done
 
-# Verifica se a rede BRIDGE_NAME este disponivel e com a feixa correta.
+# Verifica se a rede BRIDGE_NAME (lxcNet) esta disponivel e com a faixa correta.
 ip link show lxcbr0 >/dev/null 2>&1 && ! ip -4 addr show lxcbr0 | grep -q '172.16.0.1/24' && echo -e 'USE_LXC_BRIDGE="true"\nLXC_BRIDGE="lxcbr0"\nLXC_ADDR="172.16.0.1"\nLXC_NETMASK="255.255.255.0"\nLXC_NETWORK="172.16.0.0/24"\nLXC_DHCP_RANGE="172.16.0.2,172.16.0.254"\nLXC_DHCP_MAX="253"\nLXC_DHCP_CONFILE=""\nLXC_DOMAIN=""' > /etc/default/lxc-net && systemctl stop lxc-net && ip link set lxcbr0 down 2>/dev/null && ip link delete lxcbr0 2>/dev/null && systemctl start lxc-net
 
 
