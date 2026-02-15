@@ -789,6 +789,97 @@ SCANER(){
 }
 
 
+ISOLE(){ # ISOLA MAQUINA EXISTENTE EM UM AMBIENTE ISOLADO DO ROOT DO HOST
+    MACHINE_NAME="$1"  # Nome da máquina
+    CONFIG_PATH="$LXC_DIR/$MACHINE_NAME/config"
+    ROOTFS_PATH="$LXC_DIR/$MACHINE_NAME/rootfs"
+
+    # Verifica se a máquina existe
+    [ ! -d "$LXC_DIR/$MACHINE_NAME" ] && { echo " Máquina $MACHINE_NAME não encontrada"; return 1; }
+
+    echo -e " Aguarde... "
+
+    # Substitui o config completamente
+    cat > "$CONFIG_PATH" <<EOL
+lxc.rootfs.path = dir:$LXC_DIR/$MACHINE_NAME/rootfs
+lxc.uts.name = $MACHINE_NAME
+
+# network
+lxc.net.0.type = veth
+lxc.net.0.link = br0
+lxc.net.0.flags = up
+lxc.net.0.name = eth0
+
+######################################
+# network bridge (host-only)
+lxc.net.1.type = veth
+lxc.net.1.link = lxcbr0
+lxc.net.1.flags = up
+lxc.net.1.name = eth1
+######################################
+
+# segurança
+lxc.apparmor.profile = unconfined
+
+# mounts essenciais para systemd
+lxc.autodev = 1
+lxc.mount.auto = proc:rw sys:rw cgroup:rw
+
+# PTY / devpts
+lxc.mount.entry = devpts dev/pts devpts defaults,newinstance,ptmxmode=0666,mode=0620 0 0
+
+# limites de terminal
+lxc.tty.max = 4
+lxc.pty.max = 1024
+
+# autostart
+lxc.start.auto = 1
+lxc.start.delay = 2
+
+# Limites de RAM e SWAP
+lxc.cgroup2.memory.max = 4G
+lxc.cgroup2.memory.high = 4G
+lxc.cgroup2.memory.swap.max = 0
+
+######################################
+# Cliente semi-privilegiado
+lxc.idmap = u 0 100000 65536
+lxc.idmap = g 0 100000 65536
+lxc.include = /usr/share/lxc/config/common.conf
+lxc.include = /usr/share/lxc/config/userns.conf
+
+# permitir dispositivos
+lxc.cgroup2.devices.allow = a
+
+# manter todas as capabilities dentro do namespace
+lxc.cap.drop =
+
+# permitir criação de tmpfs necessários ao systemd
+lxc.apparmor.allow_nesting = 1
+######################################
+EOL
+
+    # Ajusta permissões do rootfs para o mapeamento de usuário
+    chown -R 100000:100000 "$ROOTFS_PATH"
+
+    # Reinicia o container
+    lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null; sleep 1
+    lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
+
+    # Aguarda container subir
+    sleep 2
+
+    # Obtém o IPv4 da interface lxcbr0 do container
+    #IP=$(echo "$(lxc-info -n "$MACHINE_NAME" -P $LXC_DIR -iH | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$')" | grep '^172\.16\.' | tail -n1)
+    IP=""; LXC_NET="^172\.16\."; for i in {1..10}; do IP=$(lxc-info -n "$MACHINE_NAME" -P $LXC_DIR -iH | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | grep "$LXC_NET" | tail -n1); [ -n "$IP" ] && break; sleep 2; done; [ -z "$IP" ] && echo -e "\e[97;41mNão foi possível obter o IP de $MACHINE_NAME\e[0m"
+
+    echo -e "\e[38;5;250;48;5;17m $MACHINE_NAME disponível em $IP \e[0m\n"
+
+    echo; exit 0
+}
+
+
+
 
 
 #-- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -821,11 +912,11 @@ wait_for_ssh() {
 #----------------------------
 # Execução seletiva por variaval de evocação (antes da primeira interação)
 #----------------------------
-#[[ -n "$1" ]] && declare -F "$1" >/dev/null && { "$1"; exit 0; }; [[ -n "$1" ]] && { echo "Uso: $0 {stat|disc|boot|reboot|start|clearing|backup|reborn|com|SCANER}"; exit 1; }
+#[[ -n "$1" ]] && declare -F "$1" >/dev/null && { "$1"; exit 0; }; [[ -n "$1" ]] && { echo "Uso: $0 {stat|disc|boot|reboot|start|clearing|backup|reborn|com|SCANER|ISOLE}"; exit 1; }
 case "${1-}" in
-  stat|disc|boot|reboot|start|clearing|backup|reborn|com|SCANER) "$1" "${@:2}"; exit 0 ;;
+  stat|disc|boot|reboot|start|clearing|backup|reborn|com|SCANER|ISOLE) "$1" "${@:2}"; exit 0 ;;
   "") ;;
-  *) stat; echo -e "${RED} [ERRO] Rota ou função não mapeada: ${NC} \n${ORANGE} Use: $0 {stat|disc|boot|reboot|start|clearing|backup|reborn|com|SCANER} ou <vazio> ${NC} \n\n"; exit 1 ;;
+  *) stat; echo -e "${RED} [ERRO] Rota ou função não mapeada: ${NC} \n${ORANGE} Use: $0 {stat|disc|boot|reboot|start|clearing|backup|reborn|com|SCANER|ISOLE} ou <vazio> ${NC} \n\n"; exit 1 ;;
 esac
 ###########################################################################################################
 
