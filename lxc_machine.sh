@@ -298,7 +298,7 @@ done
 
 # Verifica se a rede BRIDGE_NAME este disponivel e com a feixa correta.
 ip link show lxcbr0 >/dev/null 2>&1 && ! ip -4 addr show lxcbr0 | grep -q '172.16.0.1/24' && echo -e 'USE_LXC_BRIDGE="true"\nLXC_BRIDGE="lxcbr0"\nLXC_ADDR="172.16.0.1"\nLXC_NETMASK="255.255.255.0"\nLXC_NETWORK="172.16.0.0/24"\nLXC_DHCP_RANGE="172.16.0.2,172.16.0.254"\nLXC_DHCP_MAX="253"\nLXC_DHCP_CONFILE=""\nLXC_DOMAIN=""' > /etc/default/lxc-net && systemctl stop lxc-net && ip link set lxcbr0 down 2>/dev/null && ip link delete lxcbr0 2>/dev/null && systemctl start lxc-net
-#
+
 
   # pkill dnsmasq 2>/dev/null || true; sleep 1; dnsmasq --no-daemon --conf-file=/etc/dnsmasq.d/lxcbr0.conf >/dev/null 2>&1 | awk '/error|failed|refused/i {print strftime("%Y-%m-%d %H:%M:%S"), $0}' >> /var/log/dnsmasq-lxc-errors.log & # Com captura de logs de erro para:     tail -f /var/log/dnsmasq-lxc-errors.log
 
