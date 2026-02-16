@@ -1886,4 +1886,3 @@ echo -e "$(DISPLAY_LXC_TABLE)"
 echo -e "$DISPLAY_LXC_INFO"
 
 exit 0
- 
