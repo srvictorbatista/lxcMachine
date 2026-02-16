@@ -347,6 +347,25 @@ boot(){
 
     info "limpando backups excessivos..."
     rm -rf /var/lib/lxc/*.bak*
+
+
+
+    # Mapear usuários em contêineres rootless (apenas se necessário)
+    grep -q '^root:100000:65536' /etc/subuid 2>/dev/null || echo 'root:100000:65536' >> /etc/subuid; grep -q '^root:165536:65536' /etc/subuid 2>/dev/null || echo 'root:165536:65536' >> /etc/subuid; grep -q '^root:100000:65536' /etc/subgid 2>/dev/null || echo 'root:100000:65536' >> /etc/subgid; grep -q '^root:165536:65536' /etc/subgid 2>/dev/null || echo 'root:165536:65536' >> /etc/subgid
+
+    echo -e " Verificando Docker... "
+    # Verifica se alguma máquina já isolada esta precisando de permissão para executar Docker
+    for MACHINE_NAME in $(grep -H "^lxc.idmap" $LXC_DIR/*/config | cut -d'/' -f3 | uniq); do
+        if lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "docker ps &>/dev/null && echo true || echo false" | grep -q true; then
+            # echo -e "\e[32m Docker OK!\e[0m"    # Exibe em verde
+        else
+            echo "Iniciando Docker em $MACHINE_NAME e aplicando permissões..."
+            chown -R 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs
+            lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null
+            sleep 1
+            lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
+        fi
+done
 }
 reboot(){
       MACHINE_NAME="${1:-}"   # Garante que não seja "unbound"
@@ -950,23 +969,6 @@ echo -e "\033[97;48;5;94m Se desejar use \"Ctrl+C\" para sair \033[0m\n\n\n"
 
 if [[ "$(id -u)" -ne 0 ]]; then err "Execute como root"; exit 1; fi
 mkdir -p "$LXC_DIR"
-
-
-# Mapear usuários em contêineres rootless (apenas se necessário)
-grep -q '^root:100000:65536' /etc/subuid 2>/dev/null || echo 'root:100000:65536' >> /etc/subuid; grep -q '^root:165536:65536' /etc/subuid 2>/dev/null || echo 'root:165536:65536' >> /etc/subuid; grep -q '^root:100000:65536' /etc/subgid 2>/dev/null || echo 'root:100000:65536' >> /etc/subgid; grep -q '^root:165536:65536' /etc/subgid 2>/dev/null || echo 'root:165536:65536' >> /etc/subgid
-
-# Verifica se alguma máquina já isolada esta precisando de permissão para executar Docker
-for MACHINE_NAME in $(grep -H "^lxc.idmap" $LXC_DIR/*/config | cut -d'/' -f3 | uniq); do
-    if lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "docker compose version &>/dev/null && echo true || echo false" | grep -q true; then
-        # echo -e "\e[32mDocker OK!\e[0m"    # Exibe em verde
-    else
-        echo "Docker não iniciado em $MACHINE_NAME, aplicando correções..."
-        chown -R 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs
-        lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null
-        sleep 1
-        lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
-    fi
-done
 
 
 
