@@ -353,11 +353,11 @@ boot(){
     # Mapear usuários em contêineres rootless (apenas se necessário)
     grep -q '^root:100000:65536' /etc/subuid 2>/dev/null || echo 'root:100000:65536' >> /etc/subuid; grep -q '^root:165536:65536' /etc/subuid 2>/dev/null || echo 'root:165536:65536' >> /etc/subuid; grep -q '^root:100000:65536' /etc/subgid 2>/dev/null || echo 'root:100000:65536' >> /etc/subgid; grep -q '^root:165536:65536' /etc/subgid 2>/dev/null || echo 'root:165536:65536' >> /etc/subgid
 
-    echo -e " Verificando Docker... "
     # Verifica se alguma máquina já isolada esta precisando de permissão para executar Docker
     for MACHINE_NAME in $(grep -H "^lxc.idmap" $LXC_DIR/*/config | cut -d'/' -f3 | uniq); do
         if lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "docker ps &>/dev/null && echo true || echo false" | grep -q true; then
             # echo -e "\e[32m Docker OK!\e[0m"    # Exibe em verde
+            true
         else
             echo "Iniciando Docker em $MACHINE_NAME e aplicando permissões..."
             chown -R 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs
@@ -365,7 +365,7 @@ boot(){
             sleep 1
             lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
         fi
-done
+    done
 }
 reboot(){
       MACHINE_NAME="${1:-}"   # Garante que não seja "unbound"
