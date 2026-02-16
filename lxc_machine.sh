@@ -870,8 +870,6 @@ lxc.apparmor.allow_nesting = 1
 
 
 # Permitir DOCKER e docker compose
-lxc.mount.auto = proc:rw sys:rw cgroup:rw
-lxc.cap.drop =
 lxc.mount.entry = /dev/fuse dev/fuse none bind,create=file 0 0
 ######################################
 EOL
