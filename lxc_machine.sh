@@ -20,6 +20,7 @@
 #    apt install lxc -y
 #
 
+
 set -euo pipefail && shopt -s nocasematch
 
 # ----------------------------
@@ -247,7 +248,7 @@ server=${DNS_EXT02}                             # DNS2 externo para resoluções
 
 # Lista DNS de resoluções de nomes/IP fixos dentro da rede host-only (adicione quantos desejar ou comente, se preferir desabilitar)
 address=/${HOST_NAME}/${HOST_IP%/*}             # Resolve ${HOST_NAME} para o IP do host (${HOST_IP%/*})
-address=/seu_dominio_adicional/${HOST_IP%/*}    # Resolve dominio adicional para o IP do host
+address=/srv02.zapsrv.com/${HOST_IP%/*}         # Resolve srv02.zapsrv.com para o IP do host
 
 listen-address=${HOST_IP%/*}                    # Escuta apenas no IP da bridge, não nas outras interfaces do host
 no-resolv                                       # Ignora /etc/resolv.conf do host, evita conflitos de DNS
@@ -837,13 +838,13 @@ lxc.net.0.link = br0
 lxc.net.0.flags = up
 lxc.net.0.name = eth0
 
-######################################
+############################################################################
 # network bridge (host-only)
 lxc.net.1.type = veth
 lxc.net.1.link = lxcbr0
 lxc.net.1.flags = up
 lxc.net.1.name = eth1
-######################################
+############################################################################
 
 # segurança
 lxc.apparmor.profile = unconfined
@@ -871,8 +872,11 @@ lxc.cgroup2.memory.swap.max = ${DEFAULT_RAM_SWAP}
 
 
 
-######################################
-# Cliente semi-privilegiado
+
+
+
+############################################################################
+# Cliente semi-privilegiado (modo semi-deus)
 lxc.idmap = u 0 100000 65536
 lxc.idmap = g 0 100000 65536
 lxc.include = /usr/share/lxc/config/common.conf
@@ -890,7 +894,7 @@ lxc.apparmor.allow_nesting = 1
 
 # Permitir DOCKER e docker compose
 lxc.mount.entry = /dev/fuse dev/fuse none bind,create=file 0 0
-######################################
+############################################################################
 EOL
 
       # Ajusta permissões do rootfs para o mapeamento de usuário
@@ -899,7 +903,7 @@ EOL
       # Ajuste de sudo (semi-privilegiado)
       lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null; chown -R 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs; chown 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs; chmod 755 $LXC_DIR/$MACHINE_NAME/rootfs
       sleep 1; lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
-      lxc-attach -n "$MACHINE_NAME" -P /lxc -- bash -c "apt update; apt install --reinstall sudo -y; chown root:root /etc/sudo.conf; chmod 644 /etc/sudo.conf; chown root:root /usr/bin/sudo; chmod 4755 /usr/bin/sudo; ls -l /usr/bin/sudo /etc/sudo.conf"
+      lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "apt update; apt install --reinstall sudo -y; chown root:root /etc/sudo.conf; chmod 644 /etc/sudo.conf; chown root:root /usr/bin/sudo; chmod 4755 /usr/bin/sudo; ls -l /usr/bin/sudo /etc/sudo.conf"
 
       sleep 2
 
@@ -925,7 +929,7 @@ ask_password(){ local p="$1" a b; while true; do read -rsp "$p: " a; echo; [[ -z
 mask_pwd_display(){ [[ "$1" == "$DEFAULT_MACHINE_PASSWORD" ]] && echo "<senha_padrao>" || echo "$1"; }
 mask_pwd(){ [[ "$1" == "$DEFAULT_MACHINE_PASSWORD" ]] && echo "<senha_padrao>" || printf '%*s' "${#1}" '' | tr ' ' '*'; }
 
-wait_for_ssh() {
+wait_for_ssh(){
   local ip="$1"; status "Aguardando SSH em $ip:22 ..."
   for i in $(seq 1 $IP_WAIT_RETRIES); do
     if nc -z -w2 "$ip" 22 &>/dev/null; then echo "[OK] SSH disponível em $ip"; return 0; fi
@@ -969,9 +973,6 @@ echo -e "\033[97;48;5;94m Se desejar use \"Ctrl+C\" para sair \033[0m\n\n\n"
 
 if [[ "$(id -u)" -ne 0 ]]; then err "Execute como root"; exit 1; fi
 mkdir -p "$LXC_DIR"
-
-
-
 
 
 
