@@ -903,7 +903,11 @@ EOL
       # Ajuste de sudo (semi-privilegiado)
       lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null; chown -R 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs; chown 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs; chmod 755 $LXC_DIR/$MACHINE_NAME/rootfs
       sleep 1; lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
-      lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "apt update; apt install --reinstall sudo -y; chown root:root /etc/sudo.conf; chmod 644 /etc/sudo.conf; chown root:root /usr/bin/sudo; chmod 4755 /usr/bin/sudo; ls -l /usr/bin/sudo /etc/sudo.conf"
+      #lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "apt update; apt install --reinstall sudo -y; chown root:root /etc/sudo.conf; chmod 644 /etc/sudo.conf; chown root:root /usr/bin/sudo; chmod 4755 /usr/bin/sudo; ls -l /usr/bin/sudo /etc/sudo.conf"
+      lxc-attach -n "$MACHINE_NAME" -P "$LXC_DIR" -- bash -c "DEBIAN_FRONTEND=noninteractive apt -qq update >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt -qq install --reinstall sudo -y >/dev/null 2>&1; chown root:root /etc/sudo.conf /usr/bin/sudo >/dev/null 2>&1; chmod 644 /etc/sudo.conf >/dev/null 2>&1; chmod 4755 /usr/bin/sudo >/dev/null 2>&1"
+
+      # APLICA LIMITAÇÕES AO DOCKER PARA EVITAR TRAVAMENTOS (BILD-BOMB):
+      lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "echo -e '{\n\t\"storage-driver\": \"vfs\",\n\t\"builder\": {\n\t\t\"gc\": {\n\t\t\t\"defaultKeepStorage\": \"20GB\",\n\t\t\t\"enabled\": true\n\t\t},\n\t\t\"resource\": {\n\t\t\t\"memory\": \"512M\",\n\t\t\t\"swap\": \"8G\",\n\t\t\t\"cpu\": \"0.5\",\n\t\t\t\"pids\": 100\n\t\t},\n\t\t\"security\": {\n\t\t\t\"noNewPrivileges\": true,\n\t\t\t\"rootless\": true\n\t\t},\n\t\t\"network\": {\n\t\t\t\"mode\": \"host\"\n\t\t},\n\t\t\"cache\": {\n\t\t\t\"maxSize\": \"2GB\"\n\t\t}\n\t}\n}' > /etc/docker/daemon.json && docker info | grep -E \"Storage Driver|Buildkit\""
 
       sleep 2
 
