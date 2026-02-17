@@ -354,7 +354,18 @@ boot(){
     # Mapear usuários em contêineres rootless (apenas se necessário)
     grep -q '^root:100000:65536' /etc/subuid 2>/dev/null || echo 'root:100000:65536' >> /etc/subuid; grep -q '^root:165536:65536' /etc/subuid 2>/dev/null || echo 'root:165536:65536' >> /etc/subuid; grep -q '^root:100000:65536' /etc/subgid 2>/dev/null || echo 'root:100000:65536' >> /etc/subgid; grep -q '^root:165536:65536' /etc/subgid 2>/dev/null || echo 'root:165536:65536' >> /etc/subgid
 
-    # Verifica se alguma máquina já isolada esta precisando de permissão para executar Docker
+    # Concede permissão total para maquinas isoladas sobre uma pasta específica (altemente merpissivo, mas tolerável em maquinas isoladas). 
+    # Para mais controle ou em clusters TunderBolt ou RAID, considerar ACL para politicas de grupo.
+    for MACHINE_NAME in $(grep -H "^lxc.idmap" $LXC_DIR/*/config | cut -d'/' -f3 | uniq); do
+        lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR --timeout 10 2>/dev/null && sleep 1
+        # chmod -R 0777 $LXC_DIR/MACHINE_NAME/rootfs/srv
+        chmod 0777 $LXC_DIR/MACHINE_NAME/rootfs/srv
+
+        sleep 1 && lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
+    done
+
+
+    # Verifica se alguma máquina já isolada esta precisando de permissão adicional para executar Docker
     for MACHINE_NAME in $(grep -H "^lxc.idmap" $LXC_DIR/*/config | cut -d'/' -f3 | uniq); do
         if lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "docker ps &>/dev/null && echo true || echo false" | grep -q true; then
             # echo -e "\e[32m Docker OK!\e[0m"    # Exibe em verde
@@ -362,7 +373,8 @@ boot(){
         else
             echo "Iniciando Docker em $MACHINE_NAME e aplicando permissões..."
             chown -R 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs
-            lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null
+            #chown -R 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs/var/lib/docker # root em volumes Docker
+            lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR --timeout 10 2>/dev/null
             sleep 1
             lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
         fi
@@ -609,16 +621,16 @@ reborn(){
 
         ###########################################################################################
         # Recriação direta (verosa):
-        #      lxc-create -n "KAMAKISHIA" -P "/lxc" -t local -- -f "/lxc/backup/KAMAKISHIA-backup-2026-02-02.tar.xz"
+        #      lxc-create -n "$MACHINE_NAME" -P "/lxc" -t local -- -f "/lxc/backup/$MACHINE_NAME-backup-2026-02-02.tar.xz"
         #
         # Recriação direta (discreta):
-        #      OUTPUT="$(lxc-create -n "KAMAKISHIA" -P "/lxc" -t local -- -f "/lxc/backup/KAMAKISHIA-backup-2026-02-02.tar.xz" 2>&1)" || echo "[ERRO] Falha ao criar container: $OUTPUT"
+        #      OUTPUT="$(lxc-create -n "$MACHINE_NAME" -P "/lxc" -t local -- -f "/lxc/backup/$MACHINE_NAME-backup-2026-02-02.tar.xz" 2>&1)" || echo "[ERRO] Falha ao criar container: $OUTPUT"
         #
         # Restaura config ao seu lugar original
-        #      mv -f /lxc/KAMAKISHIA/rootfs/KAMAKISHIA_config /lxc/KAMAKISHIA/config &>/dev/null
+        #      mv -f /lxc/$MACHINE_NAME/rootfs/$MACHINE_NAME_config /lxc/$MACHINE_NAME/config &>/dev/null
         #
         # Remove arquivo de Meta Data
-        #      rm -f /lxc/KAMAKISHIA/rootfs/metadata.yaml &>/dev/null
+        #      rm -f /lxc/$MACHINE_NAME/rootfs/metadata.yaml &>/dev/null
         #
         ###########################################################################################
 
@@ -742,7 +754,7 @@ mknod -m 666 "$ROOTFS_DIR/dev/urandom" c 1 9 2>/dev/null || true
         mv -f "${LXC_DIR}/${MACHINE_NAME}/rootfs/${MACHINE_NAME}_config" "${LXC_DIR}/${MACHINE_NAME}/config" &>/dev/null
 
         # Remove arquivo de Meta Data
-        rm -f "${LXC_DIR}/KAMAKISHIA/rootfs/metadata.yaml" &>/dev/null
+        rm -f "${LXC_DIR}/$MACHINE_NAME/rootfs/metadata.yaml" &>/dev/null
 
         # Configura symlink dentro do rootfs das maquinas
         #for c in "$LXC_DIR"/*/rootfs/etc/resolv.conf; do rm -f "$c" && touch "$c"; done
@@ -821,7 +833,14 @@ ISOLE(){ # ISOLA MAQUINA EXISTENTE EM UM AMBIENTE ISOLADO DO ROOT DO HOST
       # Verifica se a máquina existe
       [ ! -d "$LXC_DIR/$MACHINE_NAME" ] && { echo " Máquina $MACHINE_NAME não encontrada"; return 1; }
 
-      echo -e "\n\e[38;5;166m [AVISO]: Este comando confinará a \"${MACHINE_NAME}\" em um ambiente isolado do root do host. \n Se você não tem certeza que deseja fazer isto, recomenda-se back-up. \e[0m"
+      echo -e "\n\033[48;2;51;0;0m\033[38;2;200;200;200m\033[1m\
+ ******************************************************************************** \n\
+ **                                                                            ** \n\
+ **              A V I S O   L E I A  C O M   A T E N Ç Ã O                    ** \n\
+ **                                                                            ** \n\
+ ******************************************************************************** \033[0m"
+
+      echo -e "\n\e[38;5;166m [AVISO]: Este comando confinará a \"${MACHINE_NAME}\" em um ambiente isolado do root do\n host, o que pode resultar em limitações importantes. \n Se você não tem certeza que deseja fazer isto, recomenda-se back-up. \e[0m"
       read -p $'\n Você tem certeza que deseja prosseguir? [s/n]: ' RESP; RESP=${RESP:-n}; [[ "$RESP" =~ ^[sSyY]$ ]] || { echo -e " Operação cancelada. \n"; exit 1; }
 
 
@@ -908,6 +927,9 @@ EOL
 
       # APLICA LIMITAÇÕES AO DOCKER PARA EVITAR TRAVAMENTOS (BILD-BOMB):
       lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "echo -e '{\n\t\"storage-driver\": \"vfs\",\n\t\"builder\": {\n\t\t\"gc\": {\n\t\t\t\"defaultKeepStorage\": \"20GB\",\n\t\t\t\"enabled\": true\n\t\t},\n\t\t\"resource\": {\n\t\t\t\"memory\": \"512M\",\n\t\t\t\"swap\": \"8G\",\n\t\t\t\"cpu\": \"0.5\",\n\t\t\t\"pids\": 100\n\t\t},\n\t\t\"security\": {\n\t\t\t\"noNewPrivileges\": true,\n\t\t\t\"rootless\": true\n\t\t},\n\t\t\"network\": {\n\t\t\t\"mode\": \"host\"\n\t\t},\n\t\t\"cache\": {\n\t\t\t\"maxSize\": \"2GB\"\n\t\t}\n\t}\n}' > /etc/docker/daemon.json && docker info | grep -E \"Storage Driver|Buildkit\""
+
+      # Faz Dcoker só iniciar depois de reconhecer rede (opcional)
+      # lxc-attach -n "$MACHINE_NAME" -P "$LXC_DIR" -- bash -c "mkdir -p /etc/systemd/system/docker.service.d && echo -e \"[Unit]\nAfter=network-online.target\nWants=network-online.target\" > /etc/systemd/system/docker.service.d/override.conf && systemctl daemon-reload && systemctl restart docker"
 
       sleep 2
 
@@ -1519,7 +1541,7 @@ IP=""
 for i in $(seq 1 $IP_WAIT_RETRIES); do
   #IP=$(lxc-info -n "$MACHINE_NAME"  -P $LXC_DIR -iH 2>/dev/null | head -n1 || true) # Obtem o primeiro IP informado
   #IP=$(lxc-info -n "$MACHINE_NAME" -P "$LXC_DIR" -iH 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | tail -n1); # obtem o ultima IP-v4 informado
-  IP=$(lxc-attach -n KAMAKISHIA -P /lxc -- ip -4 -o addr show eth0 | awk '{split($4,a,"/"); print a[1]}'); # Obtem o IP da interface eth0 (rede física)
+  IP=$(lxc-attach -n $MACHINE_NAME -P /lxc -- ip -4 -o addr show eth0 | awk '{split($4,a,"/"); print a[1]}'); # Obtem o IP da interface eth0 (rede física)
   [[ -n "$IP" && "$IP" != "-" ]] && break
   sleep 2
 done
