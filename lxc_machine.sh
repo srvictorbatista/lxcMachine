@@ -809,7 +809,7 @@ com(){
 }
 SCANER(){
         local PORTAS_IN FAIXAS_IN PORTS_CSV SPIN_PID OUTPUT LINES F
-        set +m; PORTAS_IN=${1:-'22 2222'}; FAIXAS_IN=${2:-'172.16.0'}; set -m
+        set +m; PORTAS_IN=${1:-'22 2222'}; FAIXAS_IN=${2:-'172.16.0'}; set -m # 135 5357
         
         read -r -a PORTAS <<< "$(printf '%s\n' "${PORTAS_IN//,/ }" | tr -cs '0-9' ' ' || echo "$SDEFAULT_PORT")"; PORT=$(IFS=' '; echo "${PORTAS[*]}")
         readarray -t FAIXAS < <(for f in ${FAIXAS_IN//,/ }; do OCT=(); for o in ${f//./ }; do n=$(echo "$o" | tr -cd '0-9' | cut -c1-3); [ -n "$n" ] && OCT+=("$n"); [ "${#OCT[@]}" -ge 3 ] && break; done; [ "${#OCT[@]}" -gt 0 ] && echo "${OCT[0]:-0}.${OCT[1]:-0}.${OCT[2]:-0}"; done); [ "${#FAIXAS[@]}" -eq 0 ] && read -r -a FAIXAS <<< "$SDEFAULT_FAIX"; FAIX=$(IFS=' '; echo "${FAIXAS[*]}")
@@ -844,6 +844,8 @@ SCANER(){
         for F in "${FAIXAS[@]}"; do echo -e "${TABLE[$F]}"; done
         echo; exit 0
 }
+scaner(){ SCANER "$@"; }
+
 ISOLE(){ # ISOLA MAQUINA EXISTENTE EM UM AMBIENTE ISOLADO DO ROOT DO HOST
       MACHINE_NAME="${1:-}"   # Garante que não seja "unbound"
       MACHINE_NAME="${MACHINE_NAME^^}"      # Converte para maiúsculas
@@ -1023,8 +1025,8 @@ wait_for_ssh(){
 # Execução seletiva por variaval de evocação (antes da primeira interação)
 #----------------------------
 #[[ -n "$1" ]] && declare -F "$1" >/dev/null && { "$1"; exit 0; }; [[ -n "$1" ]] && { echo "Uso: $0 {stat|disc|boot|reboot|restart|start|clearing|backup|reborn|com|SCANER|ISOLE}"; exit 1; }
-case "${1-}" in
-  stat|disc|boot|reboot|restart|start|clearing|backup|reborn|com|SCANER|ISOLE) "$1" "${@:2}"; exit 0 ;;
+case "${1-}" in # scaner esta aqui apenas como redundancia para SCANER
+  stat|disc|boot|reboot|restart|start|clearing|backup|reborn|com|scanser|SCANER|ISOLE) "$1" "${@:2}"; exit 0 ;;
   "") ;;
   *) stat; echo -e "${RED} [ERRO] Rota ou função não mapeada: ${NC} \n${ORANGE} Use: $0 {stat|disc|boot|reboot|restart|start|clearing|backup|reborn|com|SCANER|ISOLE} ou <vazio> ${NC} \n\n"; exit 1 ;;
 esac
