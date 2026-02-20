@@ -47,7 +47,7 @@ IP_WAIT_RETRIES=60
 
 
 
-SELFSCRIPT_NAME=$0; DATATIMEZ="$(timedatectl show -p Timezone --value): $(echo Seg. Ter. Qua. Qui. Sex. Sab. Dom. | cut -d' ' -f$(date +%u)) $(date '+%d/%m/%Y  %H:%M:%S')"
+SELFSCRIPT_NAME=$0; ImgSistDef=4.002; DATATIMEZ="$(timedatectl show -p Timezone --value): $(echo Seg. Ter. Qua. Qui. Sex. Sab. Dom. | cut -d' ' -f$(date +%u)) $(date '+%d/%m/%Y  %H:%M:%S')"
 DISPLAY_LXC_INFO="
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Comandos úteis e suas funções:
@@ -70,7 +70,8 @@ Comandos úteis e suas funções:
  lxc com                            → Lista todos os domandos adicionais disponiveis no LXC Classico do host.
  lxc bin <comando>                  → Acessa LXC Classico diretamente. *Isto não é necessário para comandos com lxc-*
  lxc disc                           → Exibe resummo de discos físicos, presentes no host.
- lxc SCANER \"<portas>\" \"<faixas>\"   → Realiza scaner de rede por faixa de IPs e portas específicas.
+ lxc health <nome>                  → Verifica uso de disco na máquina, tamanho e saúde do volume no host.
+ lxc scaner \"<portas>\" \"<faixas>\"   → Realiza scaner de rede por faixa de IPs e portas específicas. Deixe vazio para padrão.
  lvextend                           → Expande o tamanho de um volume lógico (LVM). *Consulte LXC doc/tolls.
  nano ${LXC_DIR}/<nome>/config            → Edita configurações e recursos de uma maquina manualmente.
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -81,7 +82,6 @@ Comandos úteis e suas funções:
 
 
 DISPLAY_LXC_TABLE(){
-  ImgSistDef=4.002
   local ROW=0 c ROOTFS info STATE CG_CPU u1 u2 CPU CG_MEM_MAX MAX_VAL RAM_RES CG_MEM MEM LV_PATH LV_TOTAL LV_USED LV_FREE LV_PERC COLOR_BG COLOR_FG DR DISK_TOTAL DISK_USED DISK_AVAIL DISK_REAL
   printf '\033[97m%-16s %-10s %-8s %-12s %-12s %-10s %-10s %-10s %-14s %-20s\033[0m\n' "NOME" "ESTADO" "CPU(s)" "RAM.MAX" "RAM.USO" "DISC.MAX" "DISC.USO" "DISC.LIVRE" "DISC.IMG" "IPV4"
   printf '\033[97m%s\033[0m\n' "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
@@ -325,6 +325,31 @@ disc(){
         #echo -e "\n\e[48;2;0;0;51m\e[38;2;255;255;255m  RESUMO DE DISCOS FISICOS  \e[0m"; for d in $(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}'); do echo; printf "\033[48;5;17;38;5;15m%-12s %-20s %-6s %-20s %-28s %-10s %-25s\033[0m\n" "MONTADO" "BARRAMENTO" "TIPO" "PONTO/MONTAGEM" "ROTULO" "TAMANHO" "MODELO"; disco_modelo=$(lsblk -dn -o MODEL /dev/$d); disco_vendor=$(lsblk -dn -o VENDOR,TRAN /dev/$d | awk '{v=$1; if($2!="")v=v"-"$2; print v}'); disco_tipo=$(lsblk -dn -o ROTA /dev/$d | awk '{if($1==1) print "HDD"; else print "SSD"}'); lsblk -P -o MOUNTPOINT,LABEL,NAME,SIZE,TYPE -n /dev/$d | awk -v tipo="$disco_tipo" -v modelo="$disco_modelo" -v barr="$disco_vendor" '{mnt="não"; rotulo=""; size=""; ponto="-"; part=""; mp=""; for(i=1;i<=NF;i++){gsub(/"/,"",$i); split($i,a,"="); if(a[1]=="MOUNTPOINT") mp=a[2]; if(a[1]=="LABEL") rotulo=a[2]; if(a[1]=="NAME" && rotulo=="") rotulo=a[2]; if(a[1]=="SIZE") size=a[2]; if(a[1]=="TYPE") part=a[2]} if(part=="disk"){printf "\033[32m%-12s %-20s %-6s %-20s %-28s %-10s %-25s\033[0m\n","Fisicamente",barr,tipo,"-",rotulo,size,modelo}else{prefix="*(p) "; rotulo=prefix rotulo; if(mp!=""){mnt="sim"; ponto=mp} lines[++c]=sprintf("%-12s %-20s %-6s %-20s %-28s %-10s %-25s",mnt,barr,tipo,ponto,rotulo,size,modelo)}} END{for(i=1;i<=c;i++){if(i%2==0){printf "\033[48;5;236;38;5;188m%s\033[0m\n",lines[i]}else{printf "\033[48;5;0;38;5;188m%s\033[0m\n",lines[i]}}}'; done
         echo -e "\n\e[48;2;0;0;51m\e[38;2;255;255;255m  RESUMO DE DISCOS FISICOS  \e[0m"; for d in $(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}'); do printf "\033[48;5;17;38;5;15m%-12s %-20s %-6s %-20s %-28s %-10s %-25s\033[0m\n" "MONTADO" "BARRAMENTO" "TIPO" "PONTO/MONTAGEM" "ROTULO" "TAMANHO" "MODELO"; disco_modelo=$(lsblk -dn -o MODEL /dev/$d); disco_vendor=$(lsblk -dn -o VENDOR,TRAN /dev/$d | awk '{v=$1; if($2!="")v=v"-"$2; print v}'); disco_tipo=$(lsblk -dn -o ROTA /dev/$d | awk '{if($1==1) print "HDD"; else print "SSD"}'); lsblk -P -o MOUNTPOINT,LABEL,NAME,SIZE,TYPE -n /dev/$d | awk -v tipo="$disco_tipo" -v modelo="$disco_modelo" -v barr="$disco_vendor" '{mnt="não"; rotulo=""; size=""; ponto="-"; part=""; mp=""; for(i=1;i<=NF;i++){gsub(/"/,"",$i); split($i,a,"="); if(a[1]=="MOUNTPOINT") mp=a[2]; if(a[1]=="LABEL") rotulo=a[2]; if(a[1]=="NAME" && rotulo=="") rotulo=a[2]; if(a[1]=="SIZE") size=a[2]; if(a[1]=="TYPE") part=a[2]} if(part=="disk"){printf "\033[32m%-12s %-20s %-6s %-20s %-28s %-10s %-25s\033[0m\n","Fisicamente",barr,tipo,"-",rotulo,size,modelo}else{prefix="*(p) "; rotulo=prefix rotulo; if(mp!=""){mnt="sim"; ponto=mp} lines[++c]=sprintf("%-12s %-20s %-6s %-20s %-28s %-10s %-25s",mnt,barr,tipo,ponto,rotulo,size,modelo)}} END{for(i=1;i<=c;i++){if(i%2==0){printf "\033[48;5;236;38;5;188m%s\033[0m\n",lines[i]}else{printf "\033[48;5;0;38;5;188m%s\033[0m\n",lines[i]}}}'; done
         exit 1
+}
+health(){
+
+      MACHINE_NAME="${1:-}"   # Garante que não seja "unbound"
+      MACHINE_NAME="${MACHINE_NAME^^}"      # Converte para maiúsculas
+
+        # Verifica se foi informado o nome da máquina
+        if [ -z "$MACHINE_NAME" ]; then
+            echo -e "\n\033[1;93m\033[40m[INFO] Para usar este comando, o nome da máquina é obrigatório. \033[0m "; return 1
+        fi
+
+        # Verifica se a máquina existe
+        if [ ! -d "$LXC_DIR/$MACHINE_NAME" ]; then
+            echo -e "${RED}[ERRO] Máquina \"$MACHINE_NAME\" não localizada. ${NC} \n"
+            exit 1
+        fi
+
+        # Verifica Uso em disco e tamanho do volume no host
+        MACHINE_VOL="$LXC_DIR/$MACHINE_NAME/rootfs"; 
+        #LV_PATH=$(lvs --noheadings -o lv_name,vg_name --separator '/' 2>/dev/null | awk -F/ -v c="$MACHINE_NAME" '$1=="lv_"c{print "/dev/"$2"/"$1}'); echo -e ""; if [[ -n "$LV_PATH" && -b "$LV_PATH" ]]; then LV_TOTAL=$(lvs --units g --nosuffix -o lv_size "$LV_PATH" 2>/dev/null | tail -n1 | awk -v s="$ImgSistDef" '{t=$1+s; printf "%.2f",t}'); LV_FREE=$(du -BG --max-depth=0 "$MACHINE_VOL" 2>/dev/null | awk '{gsub("G","",$1); print $1}'); LV_USED=$(awk -v t="$LV_TOTAL" -v f="$LV_FREE" 'BEGIN{printf "%.2f",t-f}'); DISCO_BYTES=$(awk -v g="$LV_USED" 'BEGIN{print g*1073741824}'); else read -r DT DU DA <<< $(df -BG --output=size,used,avail "$MACHINE_VOL" 2>/dev/null | tail -n1); LV_TOTAL=$(awk -v s="$ImgSistDef" -v t="${DT//G/}" 'BEGIN{printf "%.2f",t+s}'); LV_FREE="${DA//G/}"; LV_USED=$(awk -v t="$LV_TOTAL" -v f="$LV_FREE" 'BEGIN{printf "%.2f",t-f}'); DISCO_BYTES=$(awk -v g="$LV_USED" 'BEGIN{print g*1073741824}'); fi; DISCO=$(awk '{b=$1; split("KB MB GB TB PB EB",u); for(i=6;i>=1;i--){v=b/(1024^(i)); if(v>=1){printf "%.2f%s",v,u[i]; exit}} if(b<1024) printf "%d Bytes",b}' <<< "$DISCO_BYTES"); VOLUME=$(du -sb "$MACHINE_VOL" 2>/dev/null | awk '{b=$1; split("KB MB GB TB PB EB",u); for(i=6;i>=1;i--){v=b/(1024^(i)); if(v>=1){printf "%.2f%s",v,u[i]; exit}} if(b<1024) printf "%d Bytes",b}'); printf " DISCO.USO: %s, VOLUME.HOST: %s\n" "$DISCO" "$VOLUME"
+        LV_PATH=$(lvs --noheadings -o lv_name,vg_name --separator '/' 2>/dev/null | awk -F/ -v c="$MACHINE_NAME" '$1=="lv_"c{print "/dev/"$2"/"$1}'); echo -e ""; if [[ -n "$LV_PATH" && -b "$LV_PATH" ]]; then LV_TOTAL=$(lvs --units g --nosuffix -o lv_size "$LV_PATH" 2>/dev/null | tail -n1 | awk -v s="$ImgSistDef" '{t=$1+s; printf "%.2f",t}'); LV_FREE=$(du -BG --max-depth=0 "$MACHINE_VOL" 2>/dev/null | awk '{gsub("G","",$1); print $1}'); LV_USED=$(awk -v t="$LV_TOTAL" -v f="$LV_FREE" 'BEGIN{printf "%.2f",t-f}'); DISCO_BYTES=$(awk -v g="$LV_USED" 'BEGIN{print g*1073741824}'); else read -r DT DU DA <<< $(df -BG --output=size,used,avail "$MACHINE_VOL" 2>/dev/null | tail -n1); LV_TOTAL=$(awk -v s="$ImgSistDef" -v t="${DT//G/}" 'BEGIN{printf "%.2f",t+s}'); LV_FREE="${DA//G/}"; LV_USED=$(awk -v t="$LV_TOTAL" -v f="$LV_FREE" 'BEGIN{printf "%.2f",t-f}'); DISCO_BYTES=$(awk -v g="$LV_USED" 'BEGIN{print g*1073741824}'); fi; DISCO=$(awk '{b=$1; split("KB MB GB TB PB EB",u); for(i=6;i>=1;i--){v=b/(1024^(i)); if(v>=1){if(v==int(v)) printf "%d%s",v,u[i]; else if(int(v*10)==v*10) printf "%.1f%s",v,u[i]; else printf "%.2f%s",v,u[i]; exit}} if(b<1024) printf "%d Bytes",b}' <<< "$DISCO_BYTES"); VOLUME=$(du -sb "$MACHINE_VOL" 2>/dev/null | awk '{b=$1; split("KB MB GB TB PB EB",u); for(i=6;i>=1;i--){v=b/(1024^(i)); if(v>=1){if(v==int(v)) printf "%d%s",v,u[i]; else if(int(v*10)==v*10) printf "%.1f%s",v,u[i]; else printf "%.2f%s",v,u[i]; exit}} if(b<1024) printf "%d Bytes",b}'); printf " DISCO.USO: %s | VOLUME.HOST: %s\n" "$DISCO" "$VOLUME"
+
+        # VERIFICAR INTEGRIDADE DE ROOTFS
+        dirs=(var etc tmp usr bin sbin lib proc sys dev); all_ok=true; for d in "${dirs[@]}"; do [ -d "$MACHINE_VOL/$d" ] && [ -r "$MACHINE_VOL/$d" ] && [ -x "$MACHINE_VOL/$d" ] || { printf "\e[1;97;48;5;52m%-6s\e[0;37;48;5;52m%-54s\e[0m\n" " $d" " está ausente ou inacessível em $MACHINE_VOL "; all_ok=false; exit 0; }; done; $all_ok && { printf "\e[48;5;22m\e[97m O volume rootfs de $MACHINE_NAME esta saudável. \e[0m \n"; }; echo ""
+
 }
 boot(){
     # Para vericicar o boot, use:
@@ -807,7 +832,7 @@ com(){
         ls /usr/bin/lxc* | sed 's|/usr/bin/||; s|^| |; s|$| |' | column -c 100 | while read -r line; do echo -e "\e[32;48;5;233m$line\e[0m"; done
         exit 0
 }
-SCANER(){
+scaner(){
         local PORTAS_IN FAIXAS_IN PORTS_CSV SPIN_PID OUTPUT LINES F
         set +m; PORTAS_IN=${1:-'22 2222'}; FAIXAS_IN=${2:-'172.16.0'}; set -m # 135 5357
         
@@ -844,7 +869,8 @@ SCANER(){
         for F in "${FAIXAS[@]}"; do echo -e "${TABLE[$F]}"; done
         echo; exit 0
 }
-scaner(){ SCANER "$@"; }
+SCANER(){ scaner "$@"; }
+
 
 ISOLE(){ # ISOLA MAQUINA EXISTENTE EM UM AMBIENTE ISOLADO DO ROOT DO HOST
       MACHINE_NAME="${1:-}"   # Garante que não seja "unbound"
@@ -1024,11 +1050,11 @@ wait_for_ssh(){
 #----------------------------
 # Execução seletiva por variaval de evocação (antes da primeira interação)
 #----------------------------
-#[[ -n "$1" ]] && declare -F "$1" >/dev/null && { "$1"; exit 0; }; [[ -n "$1" ]] && { echo "Uso: $0 {stat|disc|boot|reboot|restart|start|clearing|backup|reborn|com|SCANER|ISOLE}"; exit 1; }
+#[[ -n "$1" ]] && declare -F "$1" >/dev/null && { "$1"; exit 0; }; [[ -n "$1" ]] && { echo "Uso: $0 {stat|disc|health|boot|reboot|restart|start|clearing|backup|reborn|com|SCANER|ISOLE}"; exit 1; }
 case "${1-}" in # scaner esta aqui apenas como redundancia para SCANER
-  stat|disc|boot|reboot|restart|start|clearing|backup|reborn|com|scanser|SCANER|ISOLE) "$1" "${@:2}"; exit 0 ;;
+  stat|disc|health|boot|reboot|restart|start|clearing|backup|reborn|com|scanser|SCANER|ISOLE) "$1" "${@:2}"; exit 0 ;;
   "") ;;
-  *) stat; echo -e "${RED} [ERRO] Rota ou função não mapeada: ${NC} \n${ORANGE} Use: $0 {stat|disc|boot|reboot|restart|start|clearing|backup|reborn|com|SCANER|ISOLE} ou <vazio> ${NC} \n\n"; exit 1 ;;
+  *) stat; echo -e "${RED} [ERRO] Rota ou função não mapeada: ${NC} \n${ORANGE} Use: $0 {stat|disc|health|boot|reboot|restart|start|clearing|backup|reborn|com|SCANER|ISOLE} ou <vazio> ${NC} \n\n"; exit 1 ;;
 esac
 ###########################################################################################################
 
