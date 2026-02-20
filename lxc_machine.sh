@@ -3,7 +3,7 @@
 #
 #
 # Para edição rápida use (isto abrirá o arquivo em branco):
-#    echo > /lxc_machine.sh; nano /lxc_machine.sh
+#    echo>/lxc_machine.sh; nano /lxc_machine.sh
 #
 # Realizar backup em segundo plano (mesmo após fechar terminal, ou via cron):
 #     nohup /lxc_machine.sh backup <nome> > /lxc/backup/back_<nome>.log 2>&1 &
@@ -47,8 +47,7 @@ IP_WAIT_RETRIES=60
 
 
 
-
-DATATIMEZ="$(timedatectl show -p Timezone --value): $(echo Seg. Ter. Qua. Qui. Sex. Sab. Dom. | cut -d' ' -f$(date +%u)) $(date '+%d/%m/%Y  %H:%M:%S')"
+SELFSCRIPT_NAME=$0; DATATIMEZ="$(timedatectl show -p Timezone --value): $(echo Seg. Ter. Qua. Qui. Sex. Sab. Dom. | cut -d' ' -f$(date +%u)) $(date '+%d/%m/%Y  %H:%M:%S')"
 DISPLAY_LXC_INFO="
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 Comandos úteis e suas funções:
@@ -65,6 +64,7 @@ Comandos úteis e suas funções:
  MENU INTERNO backups .tar.xz       → Após <nome> use [3] para criar ou [4] para restaurar backups.
  lxc backup <nome>                  → Realiza backup completo (tar.xz) de uma maquina sem acessar este display.
  lxc reborn <nome> <backup.tar.xz>  → Reconstroi uma maquina excluída, a partir de um arquivo de backup (tar.xz).
+ lxc restart <nome>                 → Reinicia a maquia rapidamente.
  lxc reboot <nome>                  → Reinicia a maquia, verifica integridade e acessa o terminal via lxc-attach.
  lxc boot                           → Testa/corrige inicialização do ambiente LXC.
  lxc com                            → Lista todos os domandos adicionais disponiveis no LXC Classico do host.
@@ -134,13 +134,13 @@ DISPLAY_LXC_TABLE(){
   done
 }
 
+DISPLAY_LXC_STATUS(){
+   echo -e "\n\n\033[37;48;5;17m SERVIDORES DISPONÍVEIS: \033[0m\n$(lxc-ls -f -P /lxc | awk 'NR==1{print "NAME","ISOLADO","STATE","AUTOSTART","GROUPS","IPV4",""; next} {ipv4=""; for(i=1;i<=NF;i++){s=$i; while(match(s,/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/,m)){split(m[1],o,"."); if(o[4]!="1") ipv4=(ipv4==""?m[1]:ipv4", "m[1]); s=substr(s,RSTART+RLENGTH)}}; isolado=($NF=="true"?"SIM":"NAO"); print $1,isolado,$2,$3,$4,ipv4,""}' | column -t; lxc-ls -f -P /lxc | awk 'NR>1{ipv6=""; for(i=1;i<=NF;i++){s2=$i; while(match(s2,/(\[?[0-9A-Fa-f:]+\]?(?:\/[0-9]+)?)/,m2)){if(index(m2[1],":")){ip=m2[1]; gsub(/^\[|\]$/,"",ip); ipv6=(ipv6==""?ip:ipv6", "ip)} s2=substr(s2,RSTART+RLENGTH)}}; if(ipv6!="") printf "\033[38;5;239m%-22s %s\033[0m\n","IPV6 "$1 ":",ipv6 }') \n"
+}
 
 
 
-
-
-
-
+if [[ "$(id -u)" -ne 0 ]]; then err "Voce precisa ser root para utilizar este script"; exit 1; fi
 
 # ----------------------------
 # Funções utilitárias
@@ -204,7 +204,7 @@ pause() { read -rp "Pressione ENTER..."; }
             done
 
             # Se algum container falhou, aguarda e reinicia o boot
-            [[ $FAILED -eq 1 ]] && (sleep 5; /lxc_machine.sh boot || true)
+            [[ $FAILED -eq 1 ]] && (sleep 5; $SELFSCRIPT_NAME boot || true)
 
 
 
@@ -316,12 +316,7 @@ ip link show lxcbr0 >/dev/null 2>&1 && ! ip -4 addr show lxcbr0 | grep -q '172.1
 #-- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ### Funções para execução seletiva:
 stat(){
-        # ----------------------------
-        # Pré checagens (status)
-        # ----------------------------
-        #echo -e "\n\n\033[37;44m SERVIDORES DISPONÍVEIS \033[0m\n$(lxc-ls --fancy)\n"
-        #echo -e "\n\n\033[37;48;5;17m SERVIDORES DISPONÍVEIS \033[0m\n$(lxc-ls --fancy | sed -E 's/[0-9]+\.[0-9]+\.0\.1(, ?)?//g')\n"
-        echo -e "\n\n\033[37;48;5;17m SERVIDORES DISPONÍVEIS: \033[0m\n$(lxc-ls -f -P /lxc | sed -E 's/[0-9]+\.[0-9]+\.0\.1(, ?)?//g')\n"
+        DISPLAY_LXC_STATUS
         echo -e "$(DISPLAY_LXC_TABLE)"
         echo -e "$DISPLAY_LXC_INFO"
 
@@ -339,15 +334,16 @@ boot(){
 
     fixBoot $LXC_DIR $VG_NAME
 
-
-
-    echo -e "\n\n\033[37;48;5;17m SERVIDORES DISPONÍVEIS \033[0m\n$(lxc-ls -f -P /lxc | sed -E 's/[0-9]+\.[0-9]+\.0\.1(, ?)?//g')\n"
+    DISPLAY_LXC_STATUS
 
     # Interrompe a execução após executar [AUTO-FIX BOOT]
     echo "Boot executado com sucesso."
 
-    info "limpando backups excessivos..."
+    info "limpando backups excessivos no core..."
     rm -rf /var/lib/lxc/*.bak*
+  
+    # LIMPA PASTA DE BACKUPs. Mantendo apenas os arquivos de log, compactados e backup .tar.xz
+    find "$LXC_BACKUP_PATH" -type f ! -regex '.*\.\(tar\..*\|log|zip\|rar\)$' -delete; find "$LXC_BACKUP_PATH" -type d -empty -delete
 
 
 
@@ -386,7 +382,7 @@ reboot(){
 
         # Verifica se foi informado o nome da máquina
         if [ -z "$MACHINE_NAME" ]; then            
-            echo -e "\n\033[1;93m\033[40m[INFO] Para gerar um backup com este comando, o nome da máquina é obrigatório. \033[0m "; return 1
+            echo -e "\n\033[1;93m\033[40m[INFO] O nome da máquina é obrigatório. \033[0m "; return 1
         fi
 
         # Verifica se a máquina existe
@@ -395,11 +391,35 @@ reboot(){
         fi
 
 
+        # VERIFICAR INTEGRIDADE DE ROOTFS
+        path=$LXC_DIR/$MACHINE_NAME/rootfs; dirs=(srv var etc tmp usr bin sbin lib proc sys dev); all_ok=true; echo -e ""; for d in "${dirs[@]}"; do [ -d "$path/$d" ] && [ -r "$path/$d" ] && [ -x "$path/$d" ] || { printf "\e[1;97;48;5;52m%-6s\e[0;37;48;5;52m%-54s\e[0m\n" " $d" " está ausente ou inacessível em $path "; all_ok=false; exit 0; }; done; $all_ok && { printf "\e[48;5;22m\e[97m O volume de $MACHINE_NAME esta saudável e sendo reinciado! \e[0m \n"; }; 
+
+
         #REINICIO COMOPLETO E ENTRADA
-        echo -e "\nReiniciando ${MACHINE_NAME}: \nAo concluir, o terminal de ${MACHINE_NAME} será aberto. \nPor favor, aguarde... \n"
-        lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" || true && lxc-start -n "$MACHINE_NAME" -P "$LXC_DIR" || true && lxc-unfreeze -n "$MACHINE_NAME" -P "$LXC_DIR" && sleep 30; lxc-attach -n "$MACHINE_NAME" -P "$LXC_DIR";
+        echo -e "Ao concluir, o terminal de ${MACHINE_NAME} será aberto. \nPor favor, aguarde... \n"
+
+        lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" >/dev/null 2>&1 || true && lxc-start -n "$MACHINE_NAME" -P "$LXC_DIR" >/dev/null 2>&1 && lxc-unfreeze -n "$MACHINE_NAME" -P "$LXC_DIR" >/dev/null 2>&1 && sleep 15 && lxc-attach -n "$MACHINE_NAME" -P "$LXC_DIR"
         exit 1
 }
+restart(){ 
+      MACHINE_NAME="${1:-}"   # Garante que não seja "unbound"
+      MACHINE_NAME="${MACHINE_NAME^^}"      # Converte para maiúsculas
+
+        # Verifica se foi informado o nome da máquina
+        if [ -z "$MACHINE_NAME" ]; then            
+            echo -e "\n\033[1;93m\033[40m[INFO] O nome da máquina é obrigatório. \033[0m "; return 1
+        fi
+
+        # Verifica se a máquina existe
+        if [ ! -d "$LXC_DIR/$MACHINE_NAME" ]; then
+            echo -e "${RED}[ERRO] Máquina \"$MACHINE_NAME\" não localizada. ${NC} \n"; return 1
+        fi
+
+        echo -e "\e[38;5;22m Aguarde... \e[0m"
+        lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" >/dev/null 2>&1 || true; sleep 1; lxc-start -n "$MACHINE_NAME" -P "$LXC_DIR" -d >/dev/null 2>&1 && echo -e "\e[48;5;22m\e[97m $MACHINE_NAME reiniciado! \e[0m \n" || echo -e "\e[48;5;52m\e[38;5;250m Falha ao reiniciar $MACHINE_NAME \e[0m \n"
+        exit 1
+}
+
 start(){ 
     echo "Start (implementando LXC no Boot)"; 
     ###########################################################################################################
@@ -414,7 +434,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/lxc_machine.sh boot
+ExecStart=$SELFSCRIPT_NAME boot
 RemainAfterExit=yes
 
 [Install]
@@ -422,8 +442,8 @@ WantedBy=multi-user.target
 EOF
 
     # Ajusta permissões do script principal
-    chmod 750 /lxc_machine.sh
-    chown root:root /lxc_machine.sh
+    chmod 750 $SELFSCRIPT_NAME
+    chown root:root $SELFSCRIPT_NAME
 
     # Atualiza systemd e habilita a unit corretamente
     systemctl daemon-reload
@@ -449,7 +469,7 @@ EOF
 
     #echo -e "# Alias LXC \nalias lxc='/lxc_machine.sh'\nalias LXC='/lxc_machine.sh'\n\n\n\n\n\n" >> /root/.bashrc
 
-    echo -e "# Alias LXC (alias \"especial\")\nlxc(){\n    if [[ "\$1" == \"bin\" ]]; then\n        shift\n        /usr/bin/lxc \"\$@\"   # Alias lxc binario clássico (lxc bin)\n    else\n        /lxc_machine.sh \"\$@\"  # Alias gestor de conteiners (lxc)\n    fi\n}\nLXC(){ lxc \"\$@\"; }\n\n\n\n\n\n" >> /root/.bashrc
+    echo -e "# Alias LXC (alias \"especial\")\nlxc(){\n    if [[ "\$1" == \"bin\" ]]; then\n        shift\n        /usr/bin/lxc \"\$@\"   # Alias lxc binario clássico (lxc bin)\n    else\n        $SELFSCRIPT_NAME \"\$@\"  # Alias gestor de conteiners (lxc)\n    fi\n}\nLXC(){ lxc \"\$@\"; }\n\n\n\n\n\n" >> /root/.bashrc
 
     source /root/.bashrc
     exit 1
@@ -472,7 +492,10 @@ clearing(){
           fi
       done
 
-      echo "Lv e Tp limpos com sucesso!"
+      # LIMPA PASTA DE BACKUPs. Mantendo apenas os arquivos de log, compactados e backup .tar.xz
+      find "$LXC_BACKUP_PATH" -type f ! -regex '.*\.\(tar\..*\|log|zip\|rar\)$' -delete; find "$LXC_BACKUP_PATH" -type d -empty -delete
+
+      echo "  Lv, Tp e resíduos de backup limpos com sucesso!"
 
       exit 0
 }
@@ -611,6 +634,11 @@ EOF
         DURATION=$((END_TIME-START_TIME))
         printf "\033[38;2;144;238;144m\033[48;2;20;20;20m Backup concluído em %s (Duração: %02d:%02d:%02d) \n\n\033[0m" "$(date '+%F %T')" $((DURATION/3600)) $((DURATION%3600/60)) $((DURATION%60))
         #-- -----------------------------------------------------------------------------------------------------------
+
+        # LIMPA PASTA DE BACKUPs. Mantendo apenas os arquivos de log, compactados e backup .tar.xz
+        find "$LXC_BACKUP_PATH" -type f ! -regex '.*\.\(tar\..*\|log|zip\|rar\)$' -delete; find "$LXC_BACKUP_PATH" -type d -empty -delete
+
+
         exit 0
 }
 reborn(){
@@ -779,9 +807,6 @@ com(){
         ls /usr/bin/lxc* | sed 's|/usr/bin/||; s|^| |; s|$| |' | column -c 100 | while read -r line; do echo -e "\e[32;48;5;233m$line\e[0m"; done
         exit 0
 }
-
-
-
 SCANER(){
         local PORTAS_IN FAIXAS_IN PORTS_CSV SPIN_PID OUTPUT LINES F
         set +m; PORTAS_IN=${1:-'22 2222'}; FAIXAS_IN=${2:-'172.16.0'}; set -m
@@ -819,19 +844,17 @@ SCANER(){
         for F in "${FAIXAS[@]}"; do echo -e "${TABLE[$F]}"; done
         echo; exit 0
 }
-
-
 ISOLE(){ # ISOLA MAQUINA EXISTENTE EM UM AMBIENTE ISOLADO DO ROOT DO HOST
       MACHINE_NAME="${1:-}"   # Garante que não seja "unbound"
       MACHINE_NAME="${MACHINE_NAME^^}"      # Converte para maiúsculas
 
       # Verifica se foi informado o nome da máquina
-      [ -z "$MACHINE_NAME" ] && { echo -e "\n\033[1;93m\033[40m[INFO] Para isolar uma máquina existente, o nome da máquina é obrigatório. \033[0m"; return 1; }
+      [ -z "$MACHINE_NAME" ] && { echo -e "\n\033[1;93m\033[40m[INFO] Para isolar uma máquina existente, o nome da máquina é obrigatório. \033[0m"; exit 0; }
       CONFIG_PATH="$LXC_DIR/$MACHINE_NAME/config"
       ROOTFS_PATH="$LXC_DIR/$MACHINE_NAME/rootfs"
 
       # Verifica se a máquina existe
-      [ ! -d "$LXC_DIR/$MACHINE_NAME" ] && { echo " Máquina $MACHINE_NAME não encontrada"; return 1; }
+      [ ! -d "$LXC_DIR/$MACHINE_NAME" ] && { echo " Máquina $MACHINE_NAME não encontrada"; exit 0; }
 
       echo -e "\n\033[48;2;51;0;0m\033[38;2;200;200;200m\033[1m\
  ******************************************************************************** \n\
@@ -840,7 +863,7 @@ ISOLE(){ # ISOLA MAQUINA EXISTENTE EM UM AMBIENTE ISOLADO DO ROOT DO HOST
  **                                                                            ** \n\
  ******************************************************************************** \033[0m"
 
-      echo -e "\n\e[38;5;166m [AVISO]: Este comando confinará a \"${MACHINE_NAME}\" em um ambiente isolado do root do\n host, o que pode resultar em limitações importantes. \n Se você não tem certeza que deseja fazer isto, recomenda-se back-up. \e[0m"
+      echo -e "\n\e[38;5;166m [AVISO]: Este comando confinará a \"${MACHINE_NAME}\" em um ambiente isolado do root do\n host, o que pode resultar em limitações importantes. \n Se você não tem certeza que deseja fazer isto, recomenda-se back-up total. \e[0m"
       read -p $'\n Você tem certeza que deseja prosseguir? [s/n]: ' RESP; RESP=${RESP:-n}; [[ "$RESP" =~ ^[sSyY]$ ]] || { echo -e " Operação cancelada. \n"; exit 1; }
 
 
@@ -901,8 +924,11 @@ lxc.idmap = g 0 100000 65536
 lxc.include = /usr/share/lxc/config/common.conf
 lxc.include = /usr/share/lxc/config/userns.conf
 
-# Permitir dispositivos
+# Permitir dispositivos (allow all)
 lxc.cgroup2.devices.allow = a
+
+# Permitir dispositivos (apenas fuse)
+#lxc.cgroup2.devices.allow = c 10:229 rwm
 
 # Manter todas as capabilities dentro do namespace
 lxc.cap.drop =
@@ -926,15 +952,36 @@ EOL
       lxc-attach -n "$MACHINE_NAME" -P "$LXC_DIR" -- bash -c "DEBIAN_FRONTEND=noninteractive apt -qq update >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt -qq install --reinstall sudo -y >/dev/null 2>&1; chown root:root /etc/sudo.conf /usr/bin/sudo >/dev/null 2>&1; chmod 644 /etc/sudo.conf >/dev/null 2>&1; chmod 4755 /usr/bin/sudo >/dev/null 2>&1"
 
       # APLICA LIMITAÇÕES AO DOCKER PARA EVITAR TRAVAMENTOS (BILD-BOMB):
-      lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "echo -e '{\n\t\"storage-driver\": \"vfs\",\n\t\"builder\": {\n\t\t\"gc\": {\n\t\t\t\"defaultKeepStorage\": \"20GB\",\n\t\t\t\"enabled\": true\n\t\t},\n\t\t\"resource\": {\n\t\t\t\"memory\": \"512M\",\n\t\t\t\"swap\": \"8G\",\n\t\t\t\"cpu\": \"0.5\",\n\t\t\t\"pids\": 100\n\t\t},\n\t\t\"security\": {\n\t\t\t\"noNewPrivileges\": true,\n\t\t\t\"rootless\": true\n\t\t},\n\t\t\"network\": {\n\t\t\t\"mode\": \"host\"\n\t\t},\n\t\t\"cache\": {\n\t\t\t\"maxSize\": \"2GB\"\n\t\t}\n\t}\n}' > /etc/docker/daemon.json && docker info | grep -E \"Storage Driver|Buildkit\""
 
-      # Faz Dcoker só iniciar depois de reconhecer rede (opcional)
-      # lxc-attach -n "$MACHINE_NAME" -P "$LXC_DIR" -- bash -c "mkdir -p /etc/systemd/system/docker.service.d && echo -e \"[Unit]\nAfter=network-online.target\nWants=network-online.target\" > /etc/systemd/system/docker.service.d/override.conf && systemctl daemon-reload && systemctl restart docker"
+        #-- ----------------------------------------------------------------
+        # Em fuse-overlayfs (uso de disco otimizado, recomendado em isolamento)
+        lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "apt-get update -qq && apt-get install -y -qq fuse-overlayfs || { echo \"ERRO: apt install fuse-overlayfs falhou\" >&2; } && which fuse-overlayfs >/dev/null || { echo \"ERRO: fuse-overlayfs não encontrado\" >&2; } && fuse-overlayfs --version || true && echo -e '# PARA USO DOCKER EM FUSE-OVERLAYFS\nexport DOCKER_BUILDKIT=1\nexport BUILDKIT_STEP_RESOURCES='\''{\"cpu\":0.5,\"memory\":\"512M\",\"pids\":100}'\''\n\n\n\n' >> ~/.bashrc && echo -e '{\n\t\"storage-driver\": \"fuse-overlayfs\",\n\t\"builder\": {\n\t\t\"gc\": {\n\t\t\t\"defaultKeepStorage\": \"20GB\",\n\t\t\t\"enabled\": true\n\t\t},\n\t\t\"resource\": {\n\t\t\t\"memory\": \"512M\",\n\t\t\t\"swap\": \"8G\",\n\t\t\t\"cpu\": \"0.5\",\n\t\t\t\"pids\": 100\n\t\t},\n\t\t\"security\": {\n\t\t\t\"noNewPrivileges\": true,\n\t\t\t\"rootless\": true\n\t\t},\n\t\t\"network\": {\n\t\t\t\"mode\": \"host\"\n\t\t},\n\t\t\"cache\": {\n\t\t\t\"maxSize\": \"2GB\"\n\t\t}\n\t}\n}' > /etc/docker/daemon.json && cat /etc/docker/daemon.json && systemctl restart docker || { echo \"ERRO: falha ao reiniciar docker; veja journalctl -u docker -n 200\" >&2; journalctl -u docker -n 200 --no-pager >&2; } && docker info | grep -E \"Storage Driver|Buildkit\""
+
+        # Habilitar fuse no host
+        #modprobe fuse && ls -l /dev/fuse
+        docker info 2>/dev/null | grep -q 'Storage Driver: fuse-overlayfs' && echo -e "Docker em fuse-overlayfs ja esta ativo.\n" || { [ -e /dev/fuse ] && echo -e "Modulo fuse ja carregado e habilitado no host.\n" || { modprobe fuse >/dev/null 2>&1 && [ -e /dev/fuse ] && echo -e "Modulo fuse habilitado no host com sucesso.\n" || { echo -e "ERRO: falha ao habilitar modulo fuse.\n" >&2; exit 1; }; }; }
+
+        # Autorizar máquina a usar fuse
+        CONF_FILE="$LXC_DIR/$MACHINE_NAME/config"; grep -q '^lxc.cgroup.devices.allow = c 10:229 rwm' "$CONF_FILE" || echo 'lxc.cgroup.devices.allow = c 10:229 rwm' >> "$CONF_FILE"; grep -q '^lxc.mount.entry = /dev/fuse dev/fuse none bind,create=file 0 0' "$CONF_FILE" || echo 'lxc.mount.entry = /dev/fuse dev/fuse none bind,create=file 0 0' >> "$CONF_FILE"; lxc-stop -n "$MACHINE_NAME" || true; lxc-start -n "$MACHINE_NAME" || { echo "ERRO: falha ao reiniciar $MACHINE_NAME" >&2; }; echo -e "\nMáquina '$MACHINE_NAME' permitida a usar fuse."; 
+        #-- ----------------------------------------------------------------
+
+
+        #-- ----------------------------------------------------------------
+        # Em VFS (alternativa menos eficiente)
+        #lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "echo -e '{\n\t\"storage-driver\": \"vfs\",\n\t\"builder\": {\n\t\t\"gc\": {\n\t\t\t\"defaultKeepStorage\": \"20GB\",\n\t\t\t\"enabled\": true\n\t\t},\n\t\t\"resource\": {\n\t\t\t\"memory\": \"512M\",\n\t\t\t\"swap\": \"8G\",\n\t\t\t\"cpu\": \"0.5\",\n\t\t\t\"pids\": 100\n\t\t},\n\t\t\"security\": {\n\t\t\t\"noNewPrivileges\": true,\n\t\t\t\"rootless\": true\n\t\t},\n\t\t\"network\": {\n\t\t\t\"mode\": \"host\"\n\t\t},\n\t\t\"cache\": {\n\t\t\t\"maxSize\": \"2GB\"\n\t\t}\n\t}\n}' > /etc/docker/daemon.json && docker info | grep -E \"Storage Driver|Buildkit\""
+
+        # Faz Dcoker só iniciar depois de reconhecer rede (opcional)
+        # lxc-attach -n "$MACHINE_NAME" -P "$LXC_DIR" -- bash -c "mkdir -p /etc/systemd/system/docker.service.d && echo -e \"[Unit]\nAfter=network-online.target\nWants=network-online.target\" > /etc/systemd/system/docker.service.d/override.conf && systemctl daemon-reload && systemctl restart docker"
+        #-- ----------------------------------------------------------------
+
+      # Retarta maquina 
+      $SELFSCRIPT_NAME restart "$MACHINE_NAME"
+
 
       sleep 2
 
       # Obtém o IPv4 da interface lxcbr0 do container, se nao encontrar tenta br0
-      IP=""; for i in $(seq 1 $IP_WAIT_RETRIES); do IP=$(lxc-attach -n "$MACHINE_NAME" -P /lxc -- ip -4 -o addr show eth1 2>/dev/null | awk '{split($4,a,"/"); print a[1]}'); [[ -n "$IP" && "$IP" != "-" ]] && break; sleep 2; done; [[ -z "$IP" || "$IP" == "-" ]] && { IP=$(lxc-attach -n "$MACHINE_NAME" -P /lxc -- ip -4 -o addr show eth0 2>/dev/null | awk '{split($4,a,"/"); print a[1]}'); [[ -z "$IP" || "$IP" == "-" ]] && { echo -e "\e[97;41m[ERRO] Não foi possível obter IP da maquina $MACHINE_NAME \e[0m"; exit 1; }; }
+      IP=""; for i in $(seq 1 $IP_WAIT_RETRIES); do IP=$(lxc-attach -n "$MACHINE_NAME" -P "LXC_DIR" -- ip -4 -o addr show eth1 2>/dev/null | awk '{split($4,a,"/"); print a[1]}'); [[ -n "$IP" && "$IP" != "-" ]] && break; sleep 2; done; [[ -z "$IP" || "$IP" == "-" ]] && { IP=$(lxc-attach -n "$MACHINE_NAME" -P /lxc -- ip -4 -o addr show eth0 2>/dev/null | awk '{split($4,a,"/"); print a[1]}'); [[ -z "$IP" || "$IP" == "-" ]] && { echo -e "\e[97;41m[ERRO] Não foi possível obter IP da maquina $MACHINE_NAME \e[0m"; exit 1; }; }
 
       echo -e "\e[38;5;250;48;5;17m $MACHINE_NAME isolado e disponível em $IP \e[0m\n"
 
@@ -958,7 +1005,7 @@ mask_pwd(){ [[ "$1" == "$DEFAULT_MACHINE_PASSWORD" ]] && echo "<senha_padrao>" |
 wait_for_ssh(){
   local ip="$1"; status "Aguardando SSH em $ip:22 ..."
   for i in $(seq 1 $IP_WAIT_RETRIES); do
-    if nc -z -w2 "$ip" 22 &>/dev/null; then echo "[OK] SSH disponível em $ip"; return 0; fi
+    if nc -z -w2 "$ip" 22 &>/dev/null; then echo -e "\033[1;32m[OK] SSH disponível em $ip \033[0m"; return 0; fi
     sleep 2
   done
   err "SSH não respondeu em $IP dentro do tempo."
@@ -975,21 +1022,16 @@ wait_for_ssh(){
 #----------------------------
 # Execução seletiva por variaval de evocação (antes da primeira interação)
 #----------------------------
-#[[ -n "$1" ]] && declare -F "$1" >/dev/null && { "$1"; exit 0; }; [[ -n "$1" ]] && { echo "Uso: $0 {stat|disc|boot|reboot|start|clearing|backup|reborn|com|SCANER|ISOLE}"; exit 1; }
+#[[ -n "$1" ]] && declare -F "$1" >/dev/null && { "$1"; exit 0; }; [[ -n "$1" ]] && { echo "Uso: $0 {stat|disc|boot|reboot|restart|start|clearing|backup|reborn|com|SCANER|ISOLE}"; exit 1; }
 case "${1-}" in
-  stat|disc|boot|reboot|start|clearing|backup|reborn|com|SCANER|ISOLE) "$1" "${@:2}"; exit 0 ;;
+  stat|disc|boot|reboot|restart|start|clearing|backup|reborn|com|SCANER|ISOLE) "$1" "${@:2}"; exit 0 ;;
   "") ;;
-  *) stat; echo -e "${RED} [ERRO] Rota ou função não mapeada: ${NC} \n${ORANGE} Use: $0 {stat|disc|boot|reboot|start|clearing|backup|reborn|com|SCANER|ISOLE} ou <vazio> ${NC} \n\n"; exit 1 ;;
+  *) stat; echo -e "${RED} [ERRO] Rota ou função não mapeada: ${NC} \n${ORANGE} Use: $0 {stat|disc|boot|reboot|restart|start|clearing|backup|reborn|com|SCANER|ISOLE} ou <vazio> ${NC} \n\n"; exit 1 ;;
 esac
 ###########################################################################################################
 
 
-# ----------------------------
-# Pré checagens
-# ----------------------------
-#echo -e "\n\n\033[37;44m SERVIDORES DISPONÍVEIS \033[0m\n$(lxc-ls --fancy)\n"
-#echo -e "\n\n\033[37;48;5;17m SERVIDORES DISPONÍVEIS \033[0m\n$(lxc-ls --fancy | sed -E 's/[0-9]+\.[0-9]+\.0\.1(, ?)?//g')\n"
-echo -e "\n\n\033[37;48;5;17m SERVIDORES DISPONÍVEIS \033[0m\n$(lxc-ls -f -P $LXC_DIR | sed -E 's/[0-9]+\.[0-9]+\.0\.1(, ?)?//g')\n"
+DISPLAY_LXC_STATUS
 echo -e "$(DISPLAY_LXC_TABLE)"
 echo -e "$DISPLAY_LXC_INFO"
 
@@ -997,7 +1039,7 @@ echo -e "$DISPLAY_LXC_INFO"
 echo -e "\033[97;48;5;94m Se desejar use \"Ctrl+C\" para sair \033[0m\n\n\n"
 
 
-if [[ "$(id -u)" -ne 0 ]]; then err "Execute como root"; exit 1; fi
+
 mkdir -p "$LXC_DIR"
 
 
@@ -1192,9 +1234,9 @@ if [[ -d "$LXC_DIR/$MACHINE_NAME" || -d "/var/lib/lxc/$MACHINE_NAME" ]]; then
       set -e
 
       # Nova modelagem de exclusão (limpeza completa)
-      lxc-stop -n "$MACHINE_NAME" -P /lxc >/dev/null 2>&1 || true; umount -lf "$LXC_DIR/$MACHINE_NAME/rootfs" >/dev/null 2>&1 || true; lvremove -fy "/dev/vg_lxc/lv_${MACHINE_NAME}" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" "/var/lib/lxc/$MACHINE_NAME" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" >/dev/null 2>&1 || true;  echo "$MACHINE_NAME, seus LVs e resíduos removidos!"
+      lxc-stop -n "$MACHINE_NAME" -P /lxc >/dev/null 2>&1 || true; umount -lf "$LXC_DIR/$MACHINE_NAME/rootfs" >/dev/null 2>&1 || true; lvremove -fy "/dev/vg_lxc/lv_${MACHINE_NAME}" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" "/var/lib/lxc/$MACHINE_NAME" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" >/dev/null 2>&1 || true;  echo "LVs e demais resíduos removidos."
 
-      echo -e "Ambiente limpo."
+      echo -e "Ambiente limpo!"
       ;;
     2)
       status "Aplicando correções (sanitize config / reiniciar)..."
@@ -1254,8 +1296,8 @@ if [[ -d "$LXC_DIR/$MACHINE_NAME" || -d "/var/lib/lxc/$MACHINE_NAME" ]]; then
 
 
       #tar -C "$LXC_DIR" -xzf "$bk" || { echo -e "${RED}[ERRO] Algo deu errado durante a restauração. Revertendo...${NC}"; /lxc_machine.sh boot >> /lxc_machine.log 2>&1 & exit 1; }
-      gzip -t "$bk" && tar -C "$LXC_DIR" -xzf "$bk" || { echo -e "${RED}[ERRO] Backup corrompido ou incompleto. Revertendo...${NC}\n\n"; /lxc_machine.sh boot >> /lxc_machine.log 2>&1 & exit 1; }
-      /lxc_machine.sh boot >/dev/null 2>&1 & sleep 5 # Refixa o ambiente (refazendo a montagem) antes de iniciar
+      gzip -t "$bk" && tar -C "$LXC_DIR" -xzf "$bk" || { echo -e "${RED}[ERRO] Backup corrompido ou incompleto. Revertendo...${NC}\n\n"; $SELFSCRIPT_NAME boot >> /lxc_machine.log 2>&1 & exit 1; }
+      $SELFSCRIPT_NAME boot >/dev/null 2>&1 & sleep 5 # Refixa o ambiente (refazendo a montagem) antes de iniciar
       lxc-start -n "$MACHINE_NAME" -P "$LXC_DIR" >/dev/null 2>&1 || true
       
 
@@ -1281,7 +1323,7 @@ if [[ -d "$LXC_DIR/$MACHINE_NAME" || -d "/var/lib/lxc/$MACHINE_NAME" ]]; then
 
       # Nova modelagem de exclusão (limpeza completa)
       #echo -e $MACHINE_NAME $LXC_DIR; echo -e "\n\n\n"
-      lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" >/dev/null 2>&1 || true; umount -lf "$LXC_DIR/$MACHINE_NAME/rootfs" >/dev/null 2>&1 || true; lvremove -fy "/dev/vg_lxc/lv_${MACHINE_NAME}" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" "/var/lib/lxc/$MACHINE_NAME" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" >/dev/null 2>&1 || true;  echo "$MACHINE_NAME, seus LVs e resíduos removidos!"
+      lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" >/dev/null 2>&1 || true; umount -lf "$LXC_DIR/$MACHINE_NAME/rootfs" >/dev/null 2>&1 || true; lvremove -fy "/dev/vg_lxc/lv_${MACHINE_NAME}" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" "/var/lib/lxc/$MACHINE_NAME" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" >/dev/null 2>&1 || true;  echo "LVs e demais resíduos removidos."
 
       
       status "Removido."; stat; exit 0
@@ -1595,7 +1637,7 @@ else
 fi
 
 # aplica senhas e adiciona sudo
-echo -e \"[SETUP] aplica senhas e adiciona ao grupo sudo\"
+echo -e \"\033[38;5;208m[SETUP] Aplicando senhas e adicionando ao grupo sudo... \033[0m\"
 { id \"$MACHINE_USER\" &>/dev/null && printf '%s:%s\n' \"$MACHINE_USER\" \"\$(printf '%s' '$MACHINE_PASSWORD_B64' | base64 -d)\" | chpasswd &>/dev/null && echo \"[INFO] Senha do usuário $MACHINE_USER definida com sucesso.\" || echo \"[WARN] Falha ao definir a senha do usuário $MACHINE_USER.\"; true;}
 
 # adiciona o usuário $MACHINE_USER ao grupo sudo
@@ -1739,7 +1781,7 @@ done
 systemctl restart ssh 1>/dev/null || true
 
 
-echo '[OK] SSH, usuário, sudo, nano, Docker e MOTD configurados.' 
+echo -e '\033[1;32m[OK] SSH, usuário, sudo, nano, Docker e MOTD configurados. \033[0m' 
 "
 
 
@@ -1892,22 +1934,24 @@ echo -e "\e[44;97m [STATUS] Uso real do rootfs (crescimento do thin LV)...\e[0m"
 echo -e "[COMMAND]: df -h \"${ROOTFS_DIR}\""
 df -h "$ROOTFS_DIR"
 
+# Verificação da partição/montagem rootfs
+ROOTFS_DIR=$LXC_DIR/$MACHINE_NAME/rootfs; dirs=(srv var etc tmp usr bin sbin lib proc sys dev); all_ok=true; echo ""; for d in "${dirs[@]}"; do [ -d "$ROOTFS_DIR/$d" ] && [ -r "$ROOTFS_DIR/$d" ] && [ -x "$ROOTFS_DIR/$d" ] || { printf "\e[1;97;48;5;52m%-6s\e[0;37;48;5;52m%-54s\e[0m\n" " $d" " está ausente ou inacessível em $ROOTFS_DIR "; all_ok=false; }; done; $all_ok && { printf "\e[48;5;22m\e[97m O volume de $MACHINE_NAME esta saudável! \e[0m \n"; }; 
+echo -e "\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n\n\n\n\n\n\n\n\n\n"
+
 # ----------------------------
 # Resultado final
 # ----------------------------
-echo
+
 # echo "=== CONTAINER CRIADO ==="
-echo -e "\n\n\n\033[97;48;5;235m NOVO SERVIDOR CRIADO!!! \033[0m"
+echo -e "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n─────────────────────────────────────\n\033[97;48;5;235m NOVO SERVIDOR CRIADO!!!             \033[0m"
 echo "Nome: $MACHINE_NAME"
 echo "Usuário: $MACHINE_USER"
 echo "Senha: $(mask_pwd_display "$MACHINE_PASSWORD")"
 echo "IP: ${IP:-(não obtido)}"
 echo "Acesso SSH: ssh $MACHINE_USER@${IP:-IP_NAO_OBTIDO}"
-echo -e "Acesso ROOT: ssh root@${IP:-IP_NAO_OBTIDO} \n\n\n"
+echo -e "Acesso ROOT: ssh root@${IP:-IP_NAO_OBTIDO} \n─────────────────────────────────────\n\n\n"
 
-# echo -e "\033[37;100m SERVIDORES DISPONÍVEIS \033[0m\n$(lxc-ls --fancy)"
-#echo -e "\033[37;100m SERVIDORES DISPONÍVEIS \033[0m\n$(lxc-ls --fancy | sed -E 's/[0-9]+\.[0-9]+\.0\.1(, ?)?//g')\n"
-echo -e "\n\n\033[37;48;5;17m SERVIDORES DISPONÍVEIS \033[0m\n$(lxc-ls -f -P /lxc | sed -E 's/[0-9]+\.[0-9]+\.0\.1(, ?)?//g')\n"
+DISPLAY_LXC_STATUS
 echo -e "$(DISPLAY_LXC_TABLE)"
 echo -e "$DISPLAY_LXC_INFO"
 
