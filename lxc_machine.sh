@@ -16,7 +16,7 @@
 #     (dpkg -s lxc >/dev/null 2>&1 || { apt update -y >/dev/null 2>/dev/stderr && apt install lxc -y >/dev/null 2>/dev/stderr; }) && curl -sSL https://raw.githubusercontent.com/srvictorbatista/lxcMachine/refs/heads/main/lxc_machine.sh -o /lxc_machine.sh && chmod +x /lxc_machine.sh && /lxc_machine.sh start
 #
 #
-# Para instalar LXC Clasico (apenas se necessário), use:
+# Para instalar LXC Clasico (apenas se necessário), use::
 #    apt install lxc -y
 #
 
@@ -80,7 +80,9 @@ Comandos úteis e suas funções:
 
 
 
-
+# --------------------------------------
+# Funções de Exibição (displays)
+# --------------------------------------
 DISPLAY_LXC_TABLE(){
   local ROW=0 c ROOTFS info STATE CG_CPU u1 u2 CPU CG_MEM_MAX MAX_VAL RAM_RES CG_MEM MEM LV_PATH LV_TOTAL LV_USED LV_FREE LV_PERC COLOR_BG COLOR_FG DR DISK_TOTAL DISK_USED DISK_AVAIL DISK_REAL
   printf '\033[97m%-16s %-10s %-8s %-12s %-12s %-10s %-10s %-10s %-14s %-20s\033[0m\n' "NOME" "ESTADO" "CPU(s)" "RAM.MAX" "RAM.USO" "DISC.MAX" "DISC.USO" "DISC.LIVRE" "DISC.IMG" "IPV4"
@@ -142,9 +144,9 @@ DISPLAY_LXC_STATUS(){
 
 if [[ "$(id -u)" -ne 0 ]]; then err "Voce precisa ser root para utilizar este script"; exit 1; fi
 
-# ----------------------------
+# --------------------------------------
 # Funções utilitárias
-# ----------------------------
+# --------------------------------------
 RED='\033[38;5;196m'; ORANGE='\033[38;5;208m'; GREEN='\033[1;32m'; BLUE='\033[0;34m'; NC='\033[0m'
 msg_info=1; msg_warn=1; msg_status=1;
 
@@ -166,7 +168,7 @@ pause() { read -rp "Pressione ENTER..."; }
         ###########################################################################################################
         # [AUTO-FIX BOOT] LXC + LVM após reboot - montagem segura e correção de rootfs
         ###########################################################################################################
-        fixBoot(){
+        fixBoot(){ # BLOCO MAIS ESTAVEL E RESILIENTE
             # echo "Aguardando para iniciar..."; sleep 30;
             local LXC_DIR="$1" VG_NAME="$2" BACKING_FILE LOOP_DEV CONTAINERS CONTAINER_NAME LV_NAME LV_PATH ROOTFS_DIR CONFIG_FILE
             set -euo pipefail
@@ -177,18 +179,14 @@ pause() { read -rp "Pressione ENTER..."; }
             LOOP_DEV=$(losetup -j "$BACKING_FILE" | cut -d: -f1) # Associa loop device se necessário
             [[ -z "$LOOP_DEV" ]] && LOOP_DEV=$(losetup --find --show "$BACKING_FILE") || true
             vgdisplay "$VG_NAME" &>/dev/null || vgchange -ay "$VG_NAME" &>/dev/null || { echo "[ERRO] Falha ao ativar VG $VG_NAME"; return 1; } # Ativa VG do LVM
-            mapfile -t CONTAINERS < <(lxc-ls -1 -P "$LXC_DIR" 2>/dev/null) # Lista todos os containers existentes
+            mapfile -t CONTAINERS < <(lxc-ls -1 -P "$LXC_DIR" 2>/dev/null) #Lista todas as maquinas existentes
 
             for c in "${CONTAINERS[@]}"; do # Monta rootfs e ajusta configs
-                CONTAINER_NAME=$(echo "$c" | tr '[:lower:]' '[:upper:]')
-                LV_NAME="lv_${CONTAINER_NAME,,}"
-                LV_PATH="/dev/$VG_NAME/$LV_NAME"
-                ROOTFS_DIR="$LXC_DIR/$CONTAINER_NAME/rootfs"
+                CONTAINER_NAME=$(echo "$c" | tr '[:lower:]' '[:upper:]'); LV_NAME="lv_${CONTAINER_NAME,,}"; LV_PATH="/dev/$VG_NAME/$LV_NAME"; ROOTFS_DIR="$LXC_DIR/$CONTAINER_NAME/rootfs"
                 mkdir -p "$ROOTFS_DIR"
                 if [[ -b "$LV_PATH" ]]; then
                     lvdisplay "$LV_PATH" 2>/dev/null | grep -q "LV Status.*available" || lvchange -ay "$LV_PATH" &>/dev/null || { echo "[ERRO] Falha ao ativar $LV_PATH"; continue; }
                     mountpoint -q "$ROOTFS_DIR" || mount "$LV_PATH" "$ROOTFS_DIR" &>/dev/null || { echo "[ERRO] Falha ao montar $LV_PATH"; continue; }
-                    chown -R root:root "$ROOTFS_DIR"; chmod -R 0755 "$ROOTFS_DIR"
                     CONFIG_FILE="$LXC_DIR/$CONTAINER_NAME/config"
                     [[ -f "$CONFIG_FILE" ]] && sed -i "s@^lxc.rootfs.path.*@lxc.rootfs.path = dir:$ROOTFS_DIR@g" "$CONFIG_FILE" || echo "lxc.rootfs.path = dir:$ROOTFS_DIR" > "$CONFIG_FILE"
                 fi
@@ -207,8 +205,62 @@ pause() { read -rp "Pressione ENTER..."; }
             [[ $FAILED -eq 1 ]] && (sleep 5; $SELFSCRIPT_NAME boot || true)
 
 
-
+            echo "[INFO] Boot LXC concluído. Todos containers iniciados com rootfs montado."
         }
+        fixBoot_XXX(){ # BLOCO PARA DEBUG E TESTES ADICIONAIS (para desenvolvimento)
+            local LXC_DIR="$1" VG_NAME="$2" BACKING_FILE="$LXC_DIR/lvm_pool.img" LOOP_DEV CONTAINERS CONTAINER_NAME LV_NAME LV_PATH ROOTFS_DIR CONFIG_FILE
+
+            ##########################################
+            # Associa loop device
+            losetup -j /lxc/lvm_pool.img >/dev/null 2>&1; LOOP_DEV=$(losetup --find --show $BACKING_FILE 2>/dev/null); vgscan >/dev/null 2>&1; vgchange -ay vg_lxc >/dev/null 2>&1; lvs -a -o lv_name,lv_attr,lv_size,vg_name >/dev/null 2>&1
+            ##########################################
+
+            # Lista todas as maquinas existentes
+            mapfile -t CONTAINERS < <(lxc-ls -1 -P "$LXC_DIR" 2>/dev/null)
+
+            for c in "${CONTAINERS[@]}"; do
+                # Normaliza o nome do container para match com LV
+                CONTAINER_NAME=$(echo "$c" | tr '[:lower:]' '[:upper:]'); LV_NAME="lv_${CONTAINER_NAME,,}"; LV_PATH="/dev/$VG_NAME/$LV_NAME"; ROOTFS_DIR="$LXC_DIR/$CONTAINER_NAME/rootfs"
+                mkdir -p "$ROOTFS_DIR"
+                if [[ -b "$LV_PATH" ]]; then
+                    # Garante que LV está ativo
+                    lvchange -ay "$LV_PATH" >/dev/null 2>&1 || { echo "[ERRO] Falha ao ativar $LV_PATH"; continue; }
+
+                    # Retry de mount com verificação
+                    if ! mountpoint -q "$ROOTFS_DIR"; then
+                        mount "$LV_PATH" "$ROOTFS_DIR" || { echo "[ERRO] Falha ao montar $LV_PATH em $ROOTFS_DIR"; continue; }
+                    fi
+
+                    # Permissões corretas
+                    #chown -R root:root "$ROOTFS_DIR"; chmod -R 0755 "$ROOTFS_DIR"
+
+                    # Atualiza o config do LXC
+                    CONFIG_FILE="$LXC_DIR/$CONTAINER_NAME/config"
+                    if [[ -f "$CONFIG_FILE" ]]; then
+                        sed -i "s@^lxc.rootfs.path.*@lxc.rootfs.path = dir:$ROOTFS_DIR@g" "$CONFIG_FILE"
+                    else
+                        echo "lxc.rootfs.path = dir:$ROOTFS_DIR" > "$CONFIG_FILE"
+                    fi
+                fi
+            done
+
+            # Inicializa containers que têm autostart habilitado
+            FAILED=0
+            for c in "${CONTAINERS[@]}"; do
+                CONFIG_FILE="$LXC_DIR/$c/config"
+                if grep -q '^lxc.start.auto\s*=\s*1' "$CONFIG_FILE" 2>/dev/null; then
+                    lxc-start -n "$c" -P "$LXC_DIR" -d &>/dev/null || { echo "[ERRO] Falha ao iniciar maquina $c"; FAILED=1; continue; }
+                    sleep 2
+                fi
+            done
+
+            # Se algum container falhou, aguarda e reinicia o boot
+            [[ $FAILED -eq 1 ]] && (sleep 5; $SELFSCRIPT_NAME boot || true)
+
+
+            echo "[INFO] Boot LXC concluído. Todos containers iniciados com rootfs montado."
+        }
+
 
         
         ###########################################################################################################
@@ -294,7 +346,8 @@ EOF
 
 # Configura symlink dentro do rootfs das maquinas
 for M in $(lxc-ls -1 -P /lxc); do 
-  rm -f "/lxc/$M/rootfs/etc/resolv.conf" && touch "/lxc/$M/rootfs/etc/resolv.conf" && cp "/etc/lxc/resolv-dnsmasq.conf" "/lxc/$M/rootfs/etc/resolv.conf" && cp "/etc/lxc/50-${BRIDGE_NAME}.yaml" "/lxc/$M/rootfs/etc/netplan/50-${BRIDGE_NAME}.yaml"; 
+  #rm -f "/lxc/$M/rootfs/etc/resolv.conf" && touch "/lxc/$M/rootfs/etc/resolv.conf" && cp "/etc/lxc/resolv-dnsmasq.conf" "/lxc/$M/rootfs/etc/resolv.conf" && cp "/etc/lxc/50-${BRIDGE_NAME}.yaml" "/lxc/$M/rootfs/etc/netplan/50-${BRIDGE_NAME}.yaml" ;
+  { rm -f "/lxc/$M/rootfs/etc/resolv.conf" || true; touch "/lxc/$M/rootfs/etc/resolv.conf" || true; cp "/etc/lxc/resolv-dnsmasq.conf" "/lxc/$M/rootfs/etc/resolv.conf" || true; cp "/etc/lxc/50-${BRIDGE_NAME}.yaml" "/lxc/$M/rootfs/etc/netplan/50-${BRIDGE_NAME}.yaml" || true; }
 done
 
 # Verifica se a rede BRIDGE_NAME (lxcNet) esta disponivel e com a faixa correta.
@@ -359,16 +412,20 @@ boot(){
 
     fixBoot $LXC_DIR $VG_NAME
 
+    
+
     DISPLAY_LXC_STATUS
 
     # Interrompe a execução após executar [AUTO-FIX BOOT]
     echo "Boot executado com sucesso."
 
     info "limpando backups excessivos no core..."
-    rm -rf /var/lib/lxc/*.bak*
+    #rm -rf /var/lib/lxc/*.bak*
+
+    #exit 0; ########################################################################
   
     # LIMPA PASTA DE BACKUPs. Mantendo apenas os arquivos de log, compactados e backup .tar.xz
-    find "$LXC_BACKUP_PATH" -type f ! -regex '.*\.\(tar\..*\|log|zip\|rar\)$' -delete; find "$LXC_BACKUP_PATH" -type d -empty -delete
+    find "$LXC_BACKUP_PATH" -type f ! -regex '.*\.\(tar\..*\|log|zip\|gip\|rar\)$' -delete; find "$LXC_BACKUP_PATH" -type d -empty -delete
 
 
 
@@ -451,7 +508,7 @@ start(){
     # [AUTO-FIX] BOOT de inicialização antes do systemd LXC 
 
     # Cria a service systemd para preparar storage antes do LXC
-    cat << 'EOF' > /etc/systemd/system/lxc-machine-boot.service
+    cat << EOF > /etc/systemd/system/lxc-machine-boot.service.bkp
 [Unit]
 Description=Prepara storage LXC (loop + LVM) após boot completo do host
 After=multi-user.target network-online.target
@@ -459,12 +516,41 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=$SELFSCRIPT_NAME boot
+ExecStart=${SELFSCRIPT_NAME} boot
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
+    # Cria a service systemd para preparar storage antes do LXC
+    cat << EOF > /etc/systemd/system/lxc-machine-boot.service
+[Unit]
+Description=Prepara storage LXC (loop + LVM) após boot completo do host
+
+
+# Ordem de inicialização: monta sistemas de arquivos, ativa LVM, inicializa rede
+After=local-fs.target lvm2-monitor.service network-online.target
+
+# Dependências estruturais para evitar exclusões antes da montagem
+Requires=lvm2-monitor.service
+
+# Garante que a rede esteja online (opcional, para DHCP ou bridges)
+Wants=network-online.target
+
+
+
+[Service]
+Type=oneshot
+ExecStart=${SELFSCRIPT_NAME} boot
+RemainAfterExit=yes
+
+
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 
     # Ajusta permissões do script principal
     chmod 750 $SELFSCRIPT_NAME
@@ -499,28 +585,36 @@ EOF
     source /root/.bashrc
     exit 1
 }
-clearing(){ 
+clearing(){
       ## Verificar volumes logicos
       # lvs -o +data_percent,metadata_percent vg_lxc/tp_lxc && vgs vg_lxc && lvs -a -o +devices vg_lxc && lvs -a -o lv_name,origin,lv_size,data_percent,metadata_percent vg_lxc
-      # Limpeza de LV e thin pools órfãos
-      for lv in $(lvs -o lv_name --noheadings vg_lxc | tr -d ' '); do
-          if ! lxc-ls -f -P /lxc | grep -q "$lv"; then
-              lvremove -f /dev/vg_lxc/$lv && echo "LV $lv removido" || echo -e "${RED} [ERRO] Falha ao remover LV $lv ${NC}"
+      # Limpeza de LV órfãos (remove apenas LVs com prefixo lv_ cujo container correspondente não exista fisicamente)
+
+      for lv in $(lvs --noheadings -o lv_name vg_lxc | awk '{$1=$1};1'); do
+          [[ "$lv" =~ ^lv_ ]] || continue
+          container_name="${lv#lv_}"
+          container_dir="$LXC_DIR/${container_name^^}"
+          lv_path="/dev/vg_lxc/$lv"
+
+          # Remove LV somente se: Rootfs não existir, LV não estiver montado e a maquina não estiver em execução
+          if [ ! -d "$container_dir" ] && ! mount | grep -q "$lv_path" && ! lxc-info -n "${container_name^^}" >/dev/null 2>&1; then
+              lvremove -fy "$lv_path" >/dev/null 2>&1 && echo "LV $lv removido (órfão confirmado)" || echo -e "${RED} [ERRO] Falha ao remover LV $lv ${NC}"
           fi
       done
 
-      # Opcional: remover thin pool se não houver LV associado
-      for tp in $(lvs -S lv_attr=twi--o-- --noheadings -o lv_name vg_lxc | tr -d ' '); do
-          lv_count=$(lvs --noheadings -o lv_name vg_lxc | grep -v "$tp" | wc -l)
-          if [[ $lv_count -eq 0 ]]; then
-              lvremove -f /dev/vg_lxc/$tp && echo "Thin pool $tp removido" || echo -e "${RED} [ERRO] Falha ao remover thin pool $tp ${NC}"
+      # Opcional: remover thin pool órfão (apenas se NÃO for o pool principal configurado e não possuir LVs associados)
+      for tp in $(lvs -S lv_attr=twi--o-- --noheadings -o lv_name vg_lxc | awk '{$1=$1};1'); do
+          [[ "$tp" == "$POOL_NAME" ]] && continue
+          lv_count=$(lvs --noheadings -o lv_name vg_lxc | awk '{$1=$1};1' | grep -v -E "^$tp$" | wc -l)
+          if [[ "$lv_count" -eq 0 ]]; then
+              lvremove -fy "/dev/vg_lxc/$tp" >/dev/null 2>&1 && echo "Thin pool $tp removido (órfão)" || echo -e "${RED} [ERRO] Falha ao remover thin pool $tp ${NC}"
           fi
       done
 
-      # LIMPA PASTA DE BACKUPs. Mantendo apenas os arquivos de log, compactados e backup .tar.xz
-      find "$LXC_BACKUP_PATH" -type f ! -regex '.*\.\(tar\..*\|log|zip\|rar\)$' -delete; find "$LXC_BACKUP_PATH" -type d -empty -delete
+      # LIMPA PASTA DE BACKUPs. Mantendo apenas os arquivos de log, compactados e backups .tar.xz
+      find "$LXC_BACKUP_PATH" -type f ! -regex '.*\.\(tar\..*\|log|zip\|gzip\|rar\)$' -delete; find "$LXC_BACKUP_PATH" -type d -empty -delete
 
-      echo "  Lv, Tp e resíduos de backup limpos com sucesso!"
+      echo -e "  Lv órfãos, Thin pools órfãos e resíduos de backup limpos com sucesso!\n"
 
       exit 0
 }
@@ -722,9 +816,9 @@ reborn(){
 # ETAPA DE CRIAÇÃO E PRIMEIRO ARRANQUE DO CONTÊINER
 #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-# ----------------------------
+# --------------------------------------
 # Criação do container LXC sobre LV thin com rootfs válido
-# ----------------------------
+# --------------------------------------
 
 LV_NAME="lv_${MACHINE_NAME,,}"
 DEST_DIR="$LXC_DIR/$MACHINE_NAME"
@@ -1074,9 +1168,9 @@ mkdir -p "$LXC_DIR"
 
 
 
-# ----------------------------
+# --------------------------------------
 # Interação inicial
-# ----------------------------
+# --------------------------------------
 echo -e "\n=== Iniciando... / Configuração de Cluster LXC ==="
 MACHINE_NAME=$(ask_default "Nome da maquina" "$DEFAULT_MACHINE_NAME")
 MACHINE_USER=$(ask_default "Usuário padrão" "$DEFAULT_MACHINE_USER")
@@ -1105,9 +1199,9 @@ MACHINE_NAME=$(echo "$MACHINE_NAME" | tr '[:lower:]' '[:upper:]')
 status "Maquina: $MACHINE_NAME | Usuário: $MACHINE_USER | Senha: $(mask_pwd "$MACHINE_PASSWORD")"
 
 
-# ----------------------------
+# --------------------------------------
 # Instala requisitos básicos
-# ----------------------------
+# --------------------------------------
 status "Verificando pacotes necessários..."
 #apt-get update -y && apt-get upgrade -y
 #apt-get install -y --no-install-recommends lxc lxc-templates lvm2 rsync debootstrap bridge-utils iproute2 wget xz-utils netcat-openbsd lsof || true
@@ -1117,9 +1211,9 @@ status "Verificando pacotes necessários..."
 
 
 
-# ----------------------------
+# --------------------------------------
 # Verificação e criação automática do VG e thinpool (seguros)
-# ----------------------------
+# --------------------------------------
 trap 'for lv in "${MOUNTED_LVS[@]:-}"; do umount -lf "$lv" >/dev/null 2>&1 || true; done' EXIT
 
 VG_EXISTE=$(vgs "$VG_NAME" 2>/dev/null || true)
@@ -1194,9 +1288,9 @@ fi
 #   lvcreate -l 90%FREE --thinpool "$POOL_NAME" "$VG_NAME" --poolmetadatasize 1G || { err "Falha ao criar thinpool"; exit 1; }
 # fi
 
-# ----------------------------
+# --------------------------------------
 # Detecta thinpool existente
-# ----------------------------
+# --------------------------------------
 EXISTING_POOL=$(lvs --noheadings -o lv_name,lv_attr "$VG_NAME" 2>/dev/null | awk '/twi|twi-/ {print $1; exit}')
 if [[ -n "$EXISTING_POOL" ]]; then
     status "Thinpool detectado: $EXISTING_POOL no VG $VG_NAME. Usando-o."
@@ -1226,9 +1320,9 @@ fi
 
 
 
-# ----------------------------
+# --------------------------------------
 # Menu se container já existir
-# ----------------------------
+# --------------------------------------
 if [[ -d "$LXC_DIR/$MACHINE_NAME" || -d "/var/lib/lxc/$MACHINE_NAME" ]]; then
   echo
   echo -e "\n\n\n=== Maquina '$MACHINE_NAME' já existe - escolha: ==="
@@ -1368,9 +1462,9 @@ fi
 # ETAPA DE CRIAÇÃO E PRIMEIRO ARRANQUE DO CONTÊINER
 #@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-# ----------------------------
+# --------------------------------------
 # Criação do container LXC sobre LV thin com rootfs válido
-# ----------------------------
+# --------------------------------------
 
 LV_NAME="lv_${MACHINE_NAME,,}"
 DEST_DIR="$LXC_DIR/$MACHINE_NAME"
@@ -1822,9 +1916,9 @@ if [[ -n "${IP:-}" ]]; then
   wait_for_ssh "$IP" || warn "SSH não disponível. Verifique dentro da maquina."
 fi
 
-# ----------------------------
+# --------------------------------------
 # Aplica .bashrc custom nos rootfs
-# ----------------------------
+# --------------------------------------
 ROOTFS="$DEST_DIR/rootfs"
 #mkdir -p "$ROOTFS/root" && cp /etc/skel/.bashrc "$ROOTFS/root/.bashrc" 2>/dev/null || touch "$ROOTFS/root/.bashrc"
 
@@ -1950,9 +2044,9 @@ chown -R 1000:1000 "$ROOTFS/home/$MACHINE_USER" 2>/dev/null || true
 
 
 
-# ----------------------------
+# --------------------------------------
 # Verificação do LV thin e rootfs
-# ----------------------------
+# --------------------------------------
 LV_PATH="/dev/$VG_NAME/$LV_NAME"
 echo -e "\n\e[44;97m [STATUS] Verificando LV da maquina... \e[0m"
 echo -e "[COMMAND]: lvs --units g --nosuffix \"${LV_PATH}\""
@@ -1966,9 +2060,9 @@ df -h "$ROOTFS_DIR"
 ROOTFS_DIR=$LXC_DIR/$MACHINE_NAME/rootfs; dirs=(srv var etc tmp usr bin sbin lib proc sys dev); all_ok=true; echo ""; for d in "${dirs[@]}"; do [ -d "$ROOTFS_DIR/$d" ] && [ -r "$ROOTFS_DIR/$d" ] && [ -x "$ROOTFS_DIR/$d" ] || { printf "\e[1;97;48;5;52m%-6s\e[0;37;48;5;52m%-54s\e[0m\n" " $d" " está ausente ou inacessível em $ROOTFS_DIR "; all_ok=false; }; done; $all_ok && { printf "\e[48;5;22m\e[97m O volume de $MACHINE_NAME esta saudável! \e[0m \n"; }; 
 echo -e "\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n\n\n\n\n\n\n\n\n\n\n\n"
 
-# ----------------------------
+# --------------------------------------
 # Resultado final
-# ----------------------------
+# --------------------------------------
 
 # echo "=== CONTAINER CRIADO ==="
 echo -e "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n─────────────────────────────────────\n\033[97;48;5;235m NOVO SERVIDOR CRIADO!!!             \033[0m"
