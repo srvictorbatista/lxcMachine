@@ -61,7 +61,7 @@ Comandos úteis e suas funções:
  lxc-attach -n <nome> -P ${LXC_DIR}       → Acesso shell diretamente, como se fosse ssh (sem credenciais).
  lxc-freeze -n <nome> -P ${LXC_DIR}       → Salva estado (congela) a execução de todos os processos, sem desligar.
  lxc-unfreeze -n <nome> -P ${LXC_DIR}     → Retoma (descongela) a execução completa, previamente pausada.
- MENU INTERNO backups .tar.xz       → Após <nome> use [3] para criar ou [4] para restaurar backups.
+ MENU INTERNO backups .tar.xz       → Após <nome> use [3] para criar ou [4] para restaurar a partir de um backup.
  lxc backup <nome>                  → Realiza backup completo (tar.xz) de uma maquina sem acessar este display.
  lxc reborn <nome> <backup.tar.xz>  → Reconstroi uma maquina excluída, a partir de um arquivo de backup (tar.xz).
  lxc restart <nome>                 → Reinicia a maquia rapidamente.
@@ -69,9 +69,11 @@ Comandos úteis e suas funções:
  lxc boot                           → Testa/corrige inicialização do ambiente LXC.
  lxc com                            → Lista todos os domandos adicionais disponiveis no LXC Classico do host.
  lxc bin <comando>                  → Acessa LXC Classico diretamente. *Isto não é necessário para comandos com lxc-*
- lxc disc                           → Exibe resummo de discos físicos, presentes no host.
  lxc health <nome>                  → Verifica uso de disco na máquina, tamanho e saúde do volume no host.
+ lxc disc                           → Exibe resummo de discos físicos, presentes no host.
+ lxc net                            → Verifica redes disponíveis (incluindo status do servidor DNS).
  lxc scaner \"<portas>\" \"<faixas>\"   → Realiza scaner de rede por faixa de IPs e portas específicas. Deixe vazio para padrão.
+ lxc isole <nome>                   → Isola do host uma máquina já existente, com autonomia para usar sudo, fuse, docker e rede.
  lvextend                           → Expande o tamanho de um volume lógico (LVM). *Consulte LXC doc/tolls.
  nano ${LXC_DIR}/<nome>/config            → Edita configurações e recursos de uma maquina manualmente.
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -88,10 +90,10 @@ DISPLAY_LXC_TABLE(){
   printf '\033[97m%-16s %-10s %-8s %-12s %-12s %-10s %-10s %-10s %-14s %-20s\033[0m\n' "NOME" "ESTADO" "CPU(s)" "RAM.MAX" "RAM.USO" "DISC.MAX" "DISC.USO" "DISC.LIVRE" "DISC.IMG" "IPV4"
   printf '\033[97m%s\033[0m\n' "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
 
-  for c in $(lxc-ls -1 -P /lxc 2>/dev/null); do
+  for c in $(lxc-ls -1 -P "$LXC_DIR" 2>/dev/null); do
     for ROOTFS in "/var/lib/lxc/$c/rootfs" "/lxc/$c/rootfs" "/srv/lxc/$c/rootfs"; do [[ -d "$ROOTFS" ]] && break || ROOTFS=""; done
 
-    info=$(lxc-info -n "$c" -P /lxc 2>/dev/null || true)
+    info=$(lxc-info -n "$c" -P "$LXC_DIR" 2>/dev/null || true)
     STATE=$(printf '%s' "$info" | awk -F: '/State:/ {gsub(/^[ \t]+/,"",$2); print $2; exit}'); [[ -z "$STATE" ]] && STATE="N/A"
 
     CG_CPU="/sys/fs/cgroup/lxc.payload.$c/cpu.stat"; if [[ -f "$CG_CPU" ]]; then u1=$(awk '/usage_usec/ {print $2}' "$CG_CPU"); sleep 1; u2=$(awk '/usage_usec/ {print $2}' "$CG_CPU"); CPU=$(awk -v d="$((u2-u1))" -v n="$(nproc)" 'BEGIN{printf "%.1f%%",d/(10000*n)}'); else CPU="N/A"; fi
@@ -131,13 +133,13 @@ DISPLAY_LXC_TABLE(){
     if [[ "$LV_PERC" -ge 90 ]]; then COLOR_BG="\033[41m"; COLOR_FG="\033[97m"; elif [[ "$LV_PERC" -ge 70 ]]; then COLOR_FG="\033[38;2;255;140;0m"; fi
     if (( ROW++ % 2 == 0 )); then BG_ROW=$'\033[48;2;30;30;30m'; else BG_ROW=$'\033[48;2;10;10;10m'; fi
     printf '%b' "$BG_ROW"
-    printf '%b%-16s %-10s %-8s %-12s %-12s %-10s %-10s %-10s %-14s %-20s\033[0m\n' "$COLOR_FG" "$c" "$STATE" "$CPU" "$RAM_RES" "$MEM" "$DISK_TOTAL" "$DISK_USED" "$DISK_AVAIL" "$DISK_REAL" "$(lxc-info -n "$c" -iH -P /lxc | grep -E '^[0-9]+\.' | grep -vE '\.0\.1$' | paste -sd',' - | tr -d '\n' || echo '[ off line ]')"
+    printf '%b%-16s %-10s %-8s %-12s %-12s %-10s %-10s %-10s %-14s %-20s\033[0m\n' "$COLOR_FG" "$c" "$STATE" "$CPU" "$RAM_RES" "$MEM" "$DISK_TOTAL" "$DISK_USED" "$DISK_AVAIL" "$DISK_REAL" "$(lxc-info -n "$c" -iH -P "$LXC_DIR" | grep -E '^[0-9]+\.' | grep -vE '\.0\.1$' | paste -sd',' - | tr -d '\n' || echo '[ off line ]')"
 
   done
 }
 
 DISPLAY_LXC_STATUS(){
-   echo -e "\n\n\033[37;48;5;17m SERVIDORES DISPONÍVEIS: \033[0m\n$(lxc-ls -f -P /lxc | awk 'NR==1{print "NAME","ISOLADO","STATE","AUTOSTART","GROUPS","IPV4",""; next} {ipv4=""; for(i=1;i<=NF;i++){s=$i; while(match(s,/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/,m)){split(m[1],o,"."); if(o[4]!="1") ipv4=(ipv4==""?m[1]:ipv4", "m[1]); s=substr(s,RSTART+RLENGTH)}}; isolado=($NF=="true"?"SIM":"NAO"); print $1,isolado,$2,$3,$4,ipv4,""}' | column -t; lxc-ls -f -P /lxc | awk 'NR>1{ipv6=""; for(i=1;i<=NF;i++){s2=$i; while(match(s2,/(\[?[0-9A-Fa-f:]+\]?(?:\/[0-9]+)?)/,m2)){if(index(m2[1],":")){ip=m2[1]; gsub(/^\[|\]$/,"",ip); ipv6=(ipv6==""?ip:ipv6", "ip)} s2=substr(s2,RSTART+RLENGTH)}}; if(ipv6!="") printf "\033[38;5;239m%-22s %s\033[0m\n","IPV6 "$1 ":",ipv6 }') \n"
+   echo -e "\n\n\033[37;48;5;17m SERVIDORES DISPONÍVEIS: \033[0m\n$(lxc-ls -f -P "$LXC_DIR" | awk 'NR==1{print "NAME","ISOLADO","STATE","AUTOSTART","GROUPS","IPV4",""; next} {ipv4=""; for(i=1;i<=NF;i++){s=$i; while(match(s,/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/,m)){split(m[1],o,"."); if(o[4]!="1") ipv4=(ipv4==""?m[1]:ipv4", "m[1]); s=substr(s,RSTART+RLENGTH)}}; isolado=($NF=="true"?"SIM":"NAO"); print $1,isolado,$2,$3,$4,ipv4,""}' | column -t; lxc-ls -f -P "$LXC_DIR" | awk 'NR>1{ipv6=""; for(i=1;i<=NF;i++){s2=$i; while(match(s2,/(\[?[0-9A-Fa-f:]+\]?(?:\/[0-9]+)?)/,m2)){if(index(m2[1],":")){ip=m2[1]; gsub(/^\[|\]$/,"",ip); ipv6=(ipv6==""?ip:ipv6", "ip)} s2=substr(s2,RSTART+RLENGTH)}}; if(ipv6!="") printf "\033[38;5;239m%-22s %s\033[0m\n","IPV6 "$1 ":",ipv6 }') \n"
 }
 
 
@@ -330,6 +332,7 @@ cat >/etc/lxc/resolv-dnsmasq.conf <<EOF
 # Faz com que o servidor DNSMASQ gerencie os serviços DNS deste terminal via politicas de rede
 nameserver ${HOST_IP%/*}
 nameserver 127.0.0.53
+nameserver 192.168.1.1
 nameserver ${DNS_EXT01}
 nameserver ${DNS_EXT02}
 search .
@@ -345,7 +348,7 @@ network:
 EOF
 
 # Configura symlink dentro do rootfs das maquinas
-for M in $(lxc-ls -1 -P /lxc); do 
+for M in $(lxc-ls -1 -P "$LXC_DIR"); do 
   #rm -f "/lxc/$M/rootfs/etc/resolv.conf" && touch "/lxc/$M/rootfs/etc/resolv.conf" && cp "/etc/lxc/resolv-dnsmasq.conf" "/lxc/$M/rootfs/etc/resolv.conf" && cp "/etc/lxc/50-${BRIDGE_NAME}.yaml" "/lxc/$M/rootfs/etc/netplan/50-${BRIDGE_NAME}.yaml" ;
   { rm -f "/lxc/$M/rootfs/etc/resolv.conf" || true; touch "/lxc/$M/rootfs/etc/resolv.conf" || true; cp "/etc/lxc/resolv-dnsmasq.conf" "/lxc/$M/rootfs/etc/resolv.conf" || true; cp "/etc/lxc/50-${BRIDGE_NAME}.yaml" "/lxc/$M/rootfs/etc/netplan/50-${BRIDGE_NAME}.yaml" || true; }
 done
@@ -357,7 +360,8 @@ ip link show lxcbr0 >/dev/null 2>&1 && ! ip -4 addr show lxcbr0 | grep -q '172.1
   # pkill dnsmasq 2>/dev/null || true; sleep 1; dnsmasq --no-daemon --conf-file=/etc/dnsmasq.d/lxcbr0.conf >/dev/null 2>&1 | awk '/error|failed|refused/i {print strftime("%Y-%m-%d %H:%M:%S"), $0}' >> /var/log/dnsmasq-lxc-errors.log & # Com captura de logs de erro para:     tail -f /var/log/dnsmasq-lxc-errors.log
 
   # Executa dnsmasq único, loga erros com timestamp em background. Com captura de logs de erro para:     tail -n 20 /var/log/dnsmasq-lxc-errors.log
-  (flock -n /run/dnsmasq-lxc.lock -c 'pkill dnsmasq 2>/dev/null || true; sleep 1; dnsmasq --no-daemon --conf-file=/etc/dnsmasq.d/lxcbr0.conf 2>&1 | awk '\''/error|failed|refused|warning/i && !/Address already in use/ {print strftime("%Y-%m-%d %H:%M:%S"), $0}'\'' >> /var/log/dnsmasq-lxc-errors.log') & # Com captura de logs de erro para:     tail -n 20 -f /var/log/dnsmasq-lxc-errors.log
+  #(flock -n /run/dnsmasq-lxc.lock -c 'pkill dnsmasq 2>/dev/null || true; sleep 1; dnsmasq --no-daemon --conf-file=/etc/dnsmasq.d/lxcbr0.conf 2>&1 | awk '\''/error|failed|refused|warning/i && !/Address already in use/ {print strftime("%Y-%m-%d %H:%M:%S"), $0}'\'' >> /var/log/dnsmasq-lxc-errors.log') & # Com captura de logs de erro para:     tail -n 20 -f /var/log/dnsmasq-lxc-errors.log
+  (flock -n /run/dnsmasq-lxc.lock -c 'until pkill dnsmasq 2>/dev/null || true; sleep 1; dnsmasq --no-daemon --conf-file=/etc/dnsmasq.d/lxcbr0.conf 2>&1 | awk '\''/error|failed|refused|warning/i && !/Address already in use/ {print strftime("%Y-%m-%d %H:%M:%S"), $0}'\'' >> /var/log/dnsmasq-lxc-errors.log; [ $? -eq 0 ]; do sleep 5; done') & # Com loop em caso de erro a cada 5 segundos e captura de logs de erro para:     tail -n 20 -f /var/log/dnsmasq-lxc-errors.log
 }
 ###########################################################################################################
 
@@ -376,7 +380,7 @@ stat(){
 }
 disc(){
         #echo -e "\n\e[48;2;0;0;51m\e[38;2;255;255;255m  RESUMO DE DISCOS FISICOS  \e[0m"; for d in $(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}'); do echo; printf "\033[48;5;17;38;5;15m%-12s %-20s %-6s %-20s %-28s %-10s %-25s\033[0m\n" "MONTADO" "BARRAMENTO" "TIPO" "PONTO/MONTAGEM" "ROTULO" "TAMANHO" "MODELO"; disco_modelo=$(lsblk -dn -o MODEL /dev/$d); disco_vendor=$(lsblk -dn -o VENDOR,TRAN /dev/$d | awk '{v=$1; if($2!="")v=v"-"$2; print v}'); disco_tipo=$(lsblk -dn -o ROTA /dev/$d | awk '{if($1==1) print "HDD"; else print "SSD"}'); lsblk -P -o MOUNTPOINT,LABEL,NAME,SIZE,TYPE -n /dev/$d | awk -v tipo="$disco_tipo" -v modelo="$disco_modelo" -v barr="$disco_vendor" '{mnt="não"; rotulo=""; size=""; ponto="-"; part=""; mp=""; for(i=1;i<=NF;i++){gsub(/"/,"",$i); split($i,a,"="); if(a[1]=="MOUNTPOINT") mp=a[2]; if(a[1]=="LABEL") rotulo=a[2]; if(a[1]=="NAME" && rotulo=="") rotulo=a[2]; if(a[1]=="SIZE") size=a[2]; if(a[1]=="TYPE") part=a[2]} if(part=="disk"){printf "\033[32m%-12s %-20s %-6s %-20s %-28s %-10s %-25s\033[0m\n","Fisicamente",barr,tipo,"-",rotulo,size,modelo}else{prefix="*(p) "; rotulo=prefix rotulo; if(mp!=""){mnt="sim"; ponto=mp} lines[++c]=sprintf("%-12s %-20s %-6s %-20s %-28s %-10s %-25s",mnt,barr,tipo,ponto,rotulo,size,modelo)}} END{for(i=1;i<=c;i++){if(i%2==0){printf "\033[48;5;236;38;5;188m%s\033[0m\n",lines[i]}else{printf "\033[48;5;0;38;5;188m%s\033[0m\n",lines[i]}}}'; done
-        echo -e "\n\e[48;2;0;0;51m\e[38;2;255;255;255m  RESUMO DE DISCOS FISICOS  \e[0m"; for d in $(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}'); do printf "\033[48;5;17;38;5;15m%-12s %-20s %-6s %-20s %-28s %-10s %-25s\033[0m\n" "MONTADO" "BARRAMENTO" "TIPO" "PONTO/MONTAGEM" "ROTULO" "TAMANHO" "MODELO"; disco_modelo=$(lsblk -dn -o MODEL /dev/$d); disco_vendor=$(lsblk -dn -o VENDOR,TRAN /dev/$d | awk '{v=$1; if($2!="")v=v"-"$2; print v}'); disco_tipo=$(lsblk -dn -o ROTA /dev/$d | awk '{if($1==1) print "HDD"; else print "SSD"}'); lsblk -P -o MOUNTPOINT,LABEL,NAME,SIZE,TYPE -n /dev/$d | awk -v tipo="$disco_tipo" -v modelo="$disco_modelo" -v barr="$disco_vendor" '{mnt="não"; rotulo=""; size=""; ponto="-"; part=""; mp=""; for(i=1;i<=NF;i++){gsub(/"/,"",$i); split($i,a,"="); if(a[1]=="MOUNTPOINT") mp=a[2]; if(a[1]=="LABEL") rotulo=a[2]; if(a[1]=="NAME" && rotulo=="") rotulo=a[2]; if(a[1]=="SIZE") size=a[2]; if(a[1]=="TYPE") part=a[2]} if(part=="disk"){printf "\033[32m%-12s %-20s %-6s %-20s %-28s %-10s %-25s\033[0m\n","Fisicamente",barr,tipo,"-",rotulo,size,modelo}else{prefix="*(p) "; rotulo=prefix rotulo; if(mp!=""){mnt="sim"; ponto=mp} lines[++c]=sprintf("%-12s %-20s %-6s %-20s %-28s %-10s %-25s",mnt,barr,tipo,ponto,rotulo,size,modelo)}} END{for(i=1;i<=c;i++){if(i%2==0){printf "\033[48;5;236;38;5;188m%s\033[0m\n",lines[i]}else{printf "\033[48;5;0;38;5;188m%s\033[0m\n",lines[i]}}}'; done
+        echo -e "\n\e[48;2;0;0;51m\e[38;2;255;255;255m  RESUMO DE DISCOS FISICOS  \e[0m"; for d in $(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}'); do printf "\033[48;5;17;38;5;15m%-12s %-20s %-6s %-20s %-28s %-10s %-25s\033[0m\n" "MONTADO" "BARRAMENTO" "TIPO" "PONTO/MONTAGEM" "ROTULO" "TAMANHO" "MODELO"; disco_modelo=$(lsblk -dn -o MODEL /dev/$d); disco_vendor=$(lsblk -dn -o VENDOR,TRAN /dev/$d | awk '{v=$1; if($2!="")v=v"-"$2; print v}'); disco_tipo=$(lsblk -dn -o ROTA /dev/$d | awk '{if($1==1) print "HDD"; else print "SSD"}'); lsblk -P -o MOUNTPOINT,LABEL,NAME,SIZE,TYPE -n /dev/$d | awk -v tipo="$disco_tipo" -v modelo="$disco_modelo" -v barr="$disco_vendor" '{mnt="não"; rotulo=""; size=""; ponto="-"; part=""; mp=""; for(i=1;i<=NF;i++){gsub(/"/,"",$i); split($i,a,"="); if(a[1]=="MOUNTPOINT") mp=a[2]; if(a[1]=="LABEL") rotulo=a[2]; if(a[1]=="NAME" && rotulo=="") rotulo=a[2]; if(a[1]=="SIZE") size=a[2]; if(a[1]=="TYPE") part=a[2]} if(part=="disk"){printf "\033[32m%-12s %-20s %-6s %-20s %-28s %-10s %-25s\033[0m\n","Fisicamente",barr,tipo,"-",rotulo,size,modelo}else{prefix="*(p) "; rotulo=prefix rotulo; if(mp!=""){mnt="sim"; ponto=mp} lines[++c]=sprintf("%-12s %-20s %-6s %-20s %-28s %-10s %-25s",mnt,barr,tipo,ponto,rotulo,size,modelo)}} END{for(i=1;i<=c;i++){if(i%2==0){printf "\033[48;5;236;38;5;188m%s\033[0m\n",lines[i]}else{printf "\033[48;5;0;38;5;188m%s\033[0m\n",lines[i]}}}'; done; echo "";
         exit 1
 }
 health(){
@@ -408,9 +412,12 @@ boot(){
     # Para vericicar o boot, use:
     ## systemctl status lxc-machine-boot.service &&  echo -e "\n\n\033[37;48;5;17m SERVIDORES DISPONÍVEIS \033[0m\n$(lxc-ls -f -P /lxc | sed -E 's/[0-9]+\.[0-9]+\.0\.1(, ?)?//g')\n"
 
-    hostOnlyNetWorkBridge
-
-    fixBoot $LXC_DIR $VG_NAME
+    #hostOnlyNetWorkBridge
+    #fixBoot $LXC_DIR $VG_NAME
+    if hostOnlyNetWorkBridge; then
+            sleep 15
+            fixBoot "$LXC_DIR" "$VG_NAME"
+    fi
 
     
 
@@ -435,9 +442,9 @@ boot(){
     # Concede permissão total para maquinas isoladas sobre uma pasta específica (altemente merpissivo, mas tolerável em maquinas isoladas). 
     # Para mais controle ou em clusters TunderBolt ou RAID, considerar ACL para politicas de grupo.
     for MACHINE_NAME in $(grep -H "^lxc.idmap" $LXC_DIR/*/config | cut -d'/' -f3 | uniq); do
-        lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR --timeout 10 2>/dev/null && sleep 1
+        lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" --timeout 10 2>/dev/null && sleep 1
         # chmod -R 0777 $LXC_DIR/MACHINE_NAME/rootfs/srv
-        chmod 0777 $LXC_DIR/MACHINE_NAME/rootfs/srv
+        chmod 0777 "$LXC_DIR/MACHINE_NAME/rootfs/srv" 2>/dev/null || true
 
         sleep 1 && lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
     done
@@ -451,10 +458,9 @@ boot(){
         else
             echo "Iniciando Docker em $MACHINE_NAME e aplicando permissões..."
             chown -R 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs
-            #chown -R 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs/var/lib/docker # root em volumes Docker
-            lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR --timeout 10 2>/dev/null
+            lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" --timeout 10 2>/dev/null
             sleep 1
-            lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
+            lxc-start -n "$MACHINE_NAME" -P "$LXC_DIR" -d
         fi
     done
 }
@@ -926,6 +932,11 @@ com(){
         ls /usr/bin/lxc* | sed 's|/usr/bin/||; s|^| |; s|$| |' | column -c 100 | while read -r line; do echo -e "\e[32;48;5;233m$line\e[0m"; done
         exit 0
 }
+net(){ 
+        echo -e "\n\e[48;5;17m\e[38;5;250m REDES DISPONÍVEIS \e[0m"; n=0; (printf "%-5s\t%-30s\t%-8s\t%-6s\t%-15s\t%-6s\t%-6s\t%-20s\t%-5s\n" "NUM" "NOME" "STATUS" "DNS" "FAIXA" "IPV4" "IPV6" "INTERFACE ID" "STP"; for i in $(ip -o link show | awk -F': ' '{print $2}'); do s=$(cat /sys/class/net/"$i"/operstate 2>/dev/null || echo unknown); [ "$s" = "up" ] && st="UP" || st="DOWN"; ip4_flag=$(ip -4 addr show dev "$i" 2>/dev/null | grep -q inet && echo SIM || echo NAO); [ -z "$ip4_flag" ] && ip4_flag=NAO; ip6_flag=$(ip -6 addr show dev "$i" 2>/dev/null | grep -q inet6 && echo SIM || echo NAO); faixa=$(ip -4 addr show dev "$i" 2>/dev/null | grep -oP "(?<=inet\s)\d+\.\d+\.\d+" | head -n1 || echo N/A); ifaceid=$(cat /sys/class/net/"$i"/address 2>/dev/null || echo N/A); stp=$(cat /sys/class/net/"$i"/bridge/stp_state 2>/dev/null | grep -q 1 && echo SIM || echo NAO); dns_status=DOWN; [ "$st" = "UP" ] && ip=$(ip -4 addr show dev "$i" 2>/dev/null | grep -oP "(?<=inet\s)\d+\.\d+\.\d+\.\d+" | head -n1) && [ -n "$ip" ] && netstat -tulpn 2>/dev/null | grep dnsmasq | grep -q "$ip" && dns_status=UP; prio=5; [ "$st" = "UP" ] && [ "$dns_status" = "UP" ] && [ "$ip4_flag" = "SIM" ] && prio=1; [ "$st" = "UP" ] && [ "$ip4_flag" = "SIM" ] && [ "$prio" != "1" ] && prio=2; [ "$st" = "UP" ] && [ "$prio" != "1" ] && [ "$prio" != "2" ] && prio=3; [ "$prio" = "5" ] && [ "$ip4_flag" = "SIM" ] && prio=4; printf "%d\t%03d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" $prio $((++n)) "$i" "$st" "$dns_status" "$faixa" "$ip4_flag" "$ip6_flag" "$ifaceid" "$stp"; done | sort -n | cut -f2-) | column -t -s $'\t' | sed -E 's/\bSIM\b/\x1b[36m&\x1b[38;5;250m/g;s/\bNAO\b/\x1b[38;5;130m&\x1b[38;5;250m/g;s/\bUP\b/\x1b[32m&\x1b[38;5;250m/g;s/\bDOWN\b/\x1b[31m&\x1b[38;5;250m/g;s/\b([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\b/\x1b[36m&\x1b[38;5;250m/g;s/\bN\/A\b/\x1b[38;5;130m&\x1b[38;5;250m/g' | awk 'BEGIN{reset="\033[0m"; headbg="\033[1;48;5;248m"; headfg="\033[1;38;5;238m"; even="\033[48;5;236m"; odd="\033[48;5;232m"; bodyfg="\033[38;5;250m"} NR==1{sub(/^[ \t]+/,""); sub(/[ \t]+$/,""); print headbg headfg " " $0 " " reset; next} {split($0,a,"\t"); for(i=1;i<=length(a);i++){if(i>=8){a[i]="\033[38;5;250m"a[i]"\033[0m"}} bg=(NR%2==0?even:odd); line=""; for(i=1;i<=length(a);i++){line=line a[i] "\t"} sub(/[ \t]+$/,"",line); print bg bodyfg " " line " " reset}'; echo ""; 
+        exit 0
+}
+
 scaner(){
         local PORTAS_IN FAIXAS_IN PORTS_CSV SPIN_PID OUTPUT LINES F
         set +m; PORTAS_IN=${1:-'22 2222'}; FAIXAS_IN=${2:-'172.16.0'}; set -m # 135 5357
@@ -965,13 +976,22 @@ scaner(){
 }
 SCANER(){ scaner "$@"; }
 
-
-ISOLE(){ # ISOLA MAQUINA EXISTENTE EM UM AMBIENTE ISOLADO DO ROOT DO HOST
+isole(){ # ISOLA MAQUINA EXISTENTE EM UM AMBIENTE ISOLADO DO ROOT DO HOST
       MACHINE_NAME="${1:-}"   # Garante que não seja "unbound"
       MACHINE_NAME="${MACHINE_NAME^^}"      # Converte para maiúsculas
 
       # Verifica se foi informado o nome da máquina
       [ -z "$MACHINE_NAME" ] && { echo -e "\n\033[1;93m\033[40m[INFO] Para isolar uma máquina existente, o nome da máquina é obrigatório. \033[0m"; exit 0; }
+
+      # Verifica se a máquina existe
+      [ ! -d "$LXC_DIR/$MACHINE_NAME" ] && { echo -e "${RED}[ERRO] Máquina \"$MACHINE_NAME\" não localizada. ${NC} \n"; exit 0; }
+
+      # Verifica se a já esta isolada
+      [ $(grep -c "^lxc.idmap" "$LXC_DIR/$MACHINE_NAME/config") -gt 0 ] && { echo -e "${ORANGE}[WARN] Máquina \"$MACHINE_NAME\" já está isolada. ${NC} \n"; exit 0; }
+
+
+
+
       CONFIG_PATH="$LXC_DIR/$MACHINE_NAME/config"
       ROOTFS_PATH="$LXC_DIR/$MACHINE_NAME/rootfs"
 
@@ -1068,8 +1088,8 @@ EOL
       chown -R 100000:100000 "$ROOTFS_PATH"
 
       # Ajuste de sudo (semi-privilegiado)
-      lxc-stop -n "$MACHINE_NAME" -P $LXC_DIR 2>/dev/null; chown -R 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs; chown 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs; chmod 755 $LXC_DIR/$MACHINE_NAME/rootfs
-      sleep 1; lxc-start -n "$MACHINE_NAME" -P $LXC_DIR -d
+      lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" 2>/dev/null; chown -R 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs; chown 100000:100000 $LXC_DIR/$MACHINE_NAME/rootfs; chmod 755 $LXC_DIR/$MACHINE_NAME/rootfs
+      sleep 1; lxc-start -n "$MACHINE_NAME" -P "$LXC_DIR" -d
       #lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "apt update; apt install --reinstall sudo -y; chown root:root /etc/sudo.conf; chmod 644 /etc/sudo.conf; chown root:root /usr/bin/sudo; chmod 4755 /usr/bin/sudo; ls -l /usr/bin/sudo /etc/sudo.conf"
       lxc-attach -n "$MACHINE_NAME" -P "$LXC_DIR" -- bash -c "DEBIAN_FRONTEND=noninteractive apt -qq update >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt -qq install --reinstall sudo -y >/dev/null 2>&1; chown root:root /etc/sudo.conf /usr/bin/sudo >/dev/null 2>&1; chmod 644 /etc/sudo.conf >/dev/null 2>&1; chmod 4755 /usr/bin/sudo >/dev/null 2>&1"
 
@@ -1077,14 +1097,14 @@ EOL
 
         #-- ----------------------------------------------------------------
         # Em fuse-overlayfs (uso de disco otimizado, recomendado em isolamento)
-        lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "apt-get update -qq && apt-get install -y -qq fuse-overlayfs || { echo \"ERRO: apt install fuse-overlayfs falhou\" >&2; } && which fuse-overlayfs >/dev/null || { echo \"ERRO: fuse-overlayfs não encontrado\" >&2; } && fuse-overlayfs --version || true && echo -e '# PARA USO DOCKER EM FUSE-OVERLAYFS\nexport DOCKER_BUILDKIT=1\nexport BUILDKIT_STEP_RESOURCES='\''{\"cpu\":0.5,\"memory\":\"512M\",\"pids\":100}'\''\n\n\n\n' >> ~/.bashrc && echo -e '{\n\t\"storage-driver\": \"fuse-overlayfs\",\n\t\"builder\": {\n\t\t\"gc\": {\n\t\t\t\"defaultKeepStorage\": \"20GB\",\n\t\t\t\"enabled\": true\n\t\t},\n\t\t\"resource\": {\n\t\t\t\"memory\": \"512M\",\n\t\t\t\"swap\": \"8G\",\n\t\t\t\"cpu\": \"0.5\",\n\t\t\t\"pids\": 100\n\t\t},\n\t\t\"security\": {\n\t\t\t\"noNewPrivileges\": true,\n\t\t\t\"rootless\": true\n\t\t},\n\t\t\"network\": {\n\t\t\t\"mode\": \"host\"\n\t\t},\n\t\t\"cache\": {\n\t\t\t\"maxSize\": \"2GB\"\n\t\t}\n\t}\n}' > /etc/docker/daemon.json && cat /etc/docker/daemon.json && systemctl restart docker || { echo \"ERRO: falha ao reiniciar docker; veja journalctl -u docker -n 200\" >&2; journalctl -u docker -n 200 --no-pager >&2; } && docker info | grep -E \"Storage Driver|Buildkit\""
+        lxc-attach -n "$MACHINE_NAME" -P $LXC_DIR -- bash -c "apt-get update -qq && apt-get install -y -qq fuse-overlayfs || { echo \"ERRO: apt install fuse-overlayfs falhou\" >&2; } && which fuse-overlayfs >/dev/null || { echo \"ERRO: fuse-overlayfs não encontrado\" >&2; } && fuse-overlayfs --version || true && echo -e '# PARA USO DOCKER EM FUSE-OVERLAYFS\nexport DOCKER_BUILDKIT=1\nexport BUILDKIT_STEP_RESOURCES='\''{\"cpu\":0.5,\"memory\":\"512M\",\"pids\":100}'\''\n\n\n\n' >> ~/.bashrc && echo -e '{\n\t\"storage-driver\": \"fuse-overlayfs\",\n\t\"builder\": {\n\t\t\"gc\": {\n\t\t\t\"defaultKeepStorage\": \"20GB\",\n\t\t\t\"enabled\": true\n\t\t},\n\t\t\"resource\": {\n\t\t\t\"memory\": \"512M\",\n\t\t\t\"swap\": \"8G\",\n\t\t\t\"cpu\": \"0.5\",\n\t\t\t\"pids\": 100\n\t\t},\n\t\t\"security\": {\n\t\t\t\"noNewPrivileges\": true,\n\t\t\t\"rootless\": true\n\t\t},\n\t\t\"network\": {\n\t\t\t\"mode\": \"host\"\n\t\t},\n\t\t\"cache\": {\n\t\t\t\"maxSize\": \"2GB\"\n\t\t}\n\t}\n}' > /etc/docker/daemon.json && echo -e \"\n${MACHINE_NAME}: /etc/docker/daemon.json\" && cat /etc/docker/daemon.json && echo -e \"\" && systemctl restart docker || { echo \"ERRO: falha ao reiniciar docker; veja journalctl -u docker -n 200\" >&2; journalctl -u docker -n 200 --no-pager >&2; } && docker info | grep -E \"Storage Driver|Buildkit\""
 
         # Habilitar fuse no host
         #modprobe fuse && ls -l /dev/fuse
-        docker info 2>/dev/null | grep -q 'Storage Driver: fuse-overlayfs' && echo -e "Docker em fuse-overlayfs ja esta ativo.\n" || { [ -e /dev/fuse ] && echo -e "Modulo fuse ja carregado e habilitado no host.\n" || { modprobe fuse >/dev/null 2>&1 && [ -e /dev/fuse ] && echo -e "Modulo fuse habilitado no host com sucesso.\n" || { echo -e "ERRO: falha ao habilitar modulo fuse.\n" >&2; exit 1; }; }; }
+        docker info 2>/dev/null | grep -q 'Storage Driver: fuse-overlayfs' && echo -e "Docker em fuse-overlayfs ja esta ativo." || { [ -e /dev/fuse ] && echo -e "Modulo fuse carregado e habilitado no host." || { modprobe fuse >/dev/null 2>&1 && [ -e /dev/fuse ] && echo -e "Modulo fuse habilitado no host com sucesso." || { echo -e "ERRO: falha ao habilitar modulo fuse.\n" >&2; exit 1; }; }; }
 
         # Autorizar máquina a usar fuse
-        CONF_FILE="$LXC_DIR/$MACHINE_NAME/config"; grep -q '^lxc.cgroup.devices.allow = c 10:229 rwm' "$CONF_FILE" || echo 'lxc.cgroup.devices.allow = c 10:229 rwm' >> "$CONF_FILE"; grep -q '^lxc.mount.entry = /dev/fuse dev/fuse none bind,create=file 0 0' "$CONF_FILE" || echo 'lxc.mount.entry = /dev/fuse dev/fuse none bind,create=file 0 0' >> "$CONF_FILE"; lxc-stop -n "$MACHINE_NAME" || true; lxc-start -n "$MACHINE_NAME" || { echo "ERRO: falha ao reiniciar $MACHINE_NAME" >&2; }; echo -e "\nMáquina '$MACHINE_NAME' permitida a usar fuse."; 
+        CONF_FILE="$LXC_DIR/$MACHINE_NAME/config"; grep -q '^lxc.cgroup.devices.allow = c 10:229 rwm' "$CONF_FILE" || echo 'lxc.cgroup.devices.allow = c 10:229 rwm' >> "$CONF_FILE"; grep -q '^lxc.mount.entry = /dev/fuse dev/fuse none bind,create=file 0 0' "$CONF_FILE" || echo 'lxc.mount.entry = /dev/fuse dev/fuse none bind,create=file 0 0' >> "$CONF_FILE"; lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" || true; lxc-start -n "$MACHINE_NAME" -P "$LXC_DIR" || { echo "ERRO: falha ao reiniciar $MACHINE_NAME" >&2; }; echo -e "\nMáquina '$MACHINE_NAME' autorizada a usar fuse."; 
         #-- ----------------------------------------------------------------
 
 
@@ -1103,12 +1123,13 @@ EOL
       sleep 2
 
       # Obtém o IPv4 da interface lxcbr0 do container, se nao encontrar tenta br0
-      IP=""; for i in $(seq 1 $IP_WAIT_RETRIES); do IP=$(lxc-attach -n "$MACHINE_NAME" -P "LXC_DIR" -- ip -4 -o addr show eth1 2>/dev/null | awk '{split($4,a,"/"); print a[1]}'); [[ -n "$IP" && "$IP" != "-" ]] && break; sleep 2; done; [[ -z "$IP" || "$IP" == "-" ]] && { IP=$(lxc-attach -n "$MACHINE_NAME" -P /lxc -- ip -4 -o addr show eth0 2>/dev/null | awk '{split($4,a,"/"); print a[1]}'); [[ -z "$IP" || "$IP" == "-" ]] && { echo -e "\e[97;41m[ERRO] Não foi possível obter IP da maquina $MACHINE_NAME \e[0m"; exit 1; }; }
+      IP=""; for i in $(seq 1 $IP_WAIT_RETRIES); do IP=$(lxc-attach -n "$MACHINE_NAME" -P "$LXC_DIR" -- ip -4 -o addr show eth1 2>/dev/null | awk '{split($4,a,"/"); print a[1]}'); [[ -n "$IP" && "$IP" != "-" ]] && break; sleep 2; done; [[ -z "$IP" || "$IP" == "-" ]] && { IP=$(lxc-attach -n "$MACHINE_NAME" -P "$LXC_DIR" -- ip -4 -o addr show eth0 2>/dev/null | awk '{split($4,a,"/"); print a[1]}'); [[ -z "$IP" || "$IP" == "-" ]] && { echo -e "\e[97;41m[ERRO] Não foi possível obter IP da maquina $MACHINE_NAME \e[0m"; exit 1; }; }
 
       echo -e "\e[38;5;250;48;5;17m $MACHINE_NAME isolado e disponível em $IP \e[0m\n"
 
       echo; exit 0
 }
+ISOLE(){ isole "$@"; }
 
 
 
@@ -1144,11 +1165,11 @@ wait_for_ssh(){
 #----------------------------
 # Execução seletiva por variaval de evocação (antes da primeira interação)
 #----------------------------
-#[[ -n "$1" ]] && declare -F "$1" >/dev/null && { "$1"; exit 0; }; [[ -n "$1" ]] && { echo "Uso: $0 {stat|disc|health|boot|reboot|restart|start|clearing|backup|reborn|com|SCANER|ISOLE}"; exit 1; }
+#[[ -n "$1" ]] && declare -F "$1" >/dev/null && { "$1"; exit 0; }; [[ -n "$1" ]] && { echo "Uso: $0 {stat|disc|health|boot|reboot|restart|start|clearing|backup|reborn|com|net|scaner|isole}"; exit 1; }
 case "${1-}" in # scaner esta aqui apenas como redundancia para SCANER
-  stat|disc|health|boot|reboot|restart|start|clearing|backup|reborn|com|scanser|SCANER|ISOLE) "$1" "${@:2}"; exit 0 ;;
+  stat|disc|health|boot|reboot|restart|start|clearing|backup|reborn|com|net|scaner|isole) "$1" "${@:2}"; exit 0 ;;
   "") ;;
-  *) stat; echo -e "${RED} [ERRO] Rota ou função não mapeada: ${NC} \n${ORANGE} Use: $0 {stat|disc|health|boot|reboot|restart|start|clearing|backup|reborn|com|SCANER|ISOLE} ou <vazio> ${NC} \n\n"; exit 1 ;;
+  *) stat; echo -e "${RED} [ERRO] Rota ou função não mapeada: ${NC} \n${ORANGE} Use: $0 {stat|disc|health|boot|reboot|restart|start|clearing|backup|reborn|com|net|scaner|isole} ou <vazio> ${NC} \n\n"; exit 1 ;;
 esac
 ###########################################################################################################
 
@@ -1338,7 +1359,7 @@ if [[ -d "$LXC_DIR/$MACHINE_NAME" || -d "/var/lib/lxc/$MACHINE_NAME" ]]; then
       echo -e "\n\nApagando e recriando $MACHINE_NAME..."   
       # Desmontando volumes   
       set +e
-      lxc-stop -n "$MACHINE_NAME" >/dev/null 2>&1
+      lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" >/dev/null 2>&1
       umount -lf "$LXC_DIR/$MACHINE_NAME/rootfs" >/dev/null 2>&1
       umount -lf "/var/lib/lxc/$MACHINE_NAME/rootfs" >/dev/null 2>&1
       losetup -D >/dev/null 2>&1 || true
@@ -1356,7 +1377,7 @@ if [[ -d "$LXC_DIR/$MACHINE_NAME" || -d "/var/lib/lxc/$MACHINE_NAME" ]]; then
       set -e
 
       # Nova modelagem de exclusão (limpeza completa)
-      lxc-stop -n "$MACHINE_NAME" -P /lxc >/dev/null 2>&1 || true; umount -lf "$LXC_DIR/$MACHINE_NAME/rootfs" >/dev/null 2>&1 || true; lvremove -fy "/dev/vg_lxc/lv_${MACHINE_NAME}" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" "/var/lib/lxc/$MACHINE_NAME" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" >/dev/null 2>&1 || true;  echo "LVs e demais resíduos removidos."
+      lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" >/dev/null 2>&1 || true; umount -lf "$LXC_DIR/$MACHINE_NAME/rootfs" >/dev/null 2>&1 || true; lvremove -fy "/dev/vg_lxc/lv_${MACHINE_NAME}" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" "/var/lib/lxc/$MACHINE_NAME" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" >/dev/null 2>&1 || true;  echo "LVs e demais resíduos removidos."
 
       echo -e "Ambiente limpo!"
       ;;
@@ -1388,7 +1409,7 @@ if [[ -d "$LXC_DIR/$MACHINE_NAME" || -d "/var/lib/lxc/$MACHINE_NAME" ]]; then
 
       # Desmontando volumes
       set +e
-      lxc-stop -n "$MACHINE_NAME" >/dev/null 2>&1
+      lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" >/dev/null 2>&1
       umount -lf "$LXC_DIR/$MACHINE_NAME/rootfs" >/dev/null 2>&1
       umount -lf "/var/lib/lxc/$MACHINE_NAME/rootfs" >/dev/null 2>&1
       losetup -D >/dev/null 2>&1 || true
@@ -1406,7 +1427,7 @@ if [[ -d "$LXC_DIR/$MACHINE_NAME" || -d "/var/lib/lxc/$MACHINE_NAME" ]]; then
       set -e
 
       # Nova modelagem de exclusão (limpeza completa)
-      lxc-stop -n "$MACHINE_NAME" -P /lxc >/dev/null 2>&1 || true; umount -lf "$LXC_DIR/$MACHINE_NAME/rootfs" >/dev/null 2>&1 || true; lvremove -fy "/dev/vg_lxc/lv_${MACHINE_NAME}" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" "/var/lib/lxc/$MACHINE_NAME" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" >/dev/null 2>&1 || true;
+      lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" >/dev/null 2>&1 || true; umount -lf "$LXC_DIR/$MACHINE_NAME/rootfs" >/dev/null 2>&1 || true; lvremove -fy "/dev/vg_lxc/lv_${MACHINE_NAME}" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" "/var/lib/lxc/$MACHINE_NAME" >/dev/null 2>&1 || true; rm -rf "$LXC_DIR/$MACHINE_NAME" >/dev/null 2>&1 || true;
        
 
       reborn "$MACHINE_NAME" "$bk"
@@ -1435,7 +1456,7 @@ if [[ -d "$LXC_DIR/$MACHINE_NAME" || -d "/var/lib/lxc/$MACHINE_NAME" ]]; then
       ;;
     5)
       set +e
-      lxc-stop -n "$MACHINE_NAME" >/dev/null 2>&1
+      lxc-stop -n "$MACHINE_NAME" -P "$LXC_DIR" >/dev/null 2>&1
       LV_PATH="/dev/$VG_NAME/lv_${MACHINE_NAME,,}"
       umount -lf "$LXC_DIR/$MACHINE_NAME/rootfs" >/dev/null 2>&1 || true
       lxc-destroy -n "$MACHINE_NAME" >/dev/null 2>&1 || true
@@ -1705,7 +1726,7 @@ IP=""
 for i in $(seq 1 $IP_WAIT_RETRIES); do
   #IP=$(lxc-info -n "$MACHINE_NAME"  -P $LXC_DIR -iH 2>/dev/null | head -n1 || true) # Obtem o primeiro IP informado
   #IP=$(lxc-info -n "$MACHINE_NAME" -P "$LXC_DIR" -iH 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | tail -n1); # obtem o ultima IP-v4 informado
-  IP=$(lxc-attach -n $MACHINE_NAME -P /lxc -- ip -4 -o addr show eth0 | awk '{split($4,a,"/"); print a[1]}'); # Obtem o IP da interface eth0 (rede física)
+  IP=$(lxc-attach -n $MACHINE_NAME -P "$LXC_DIR" -- ip -4 -o addr show eth0 | awk '{split($4,a,"/"); print a[1]}'); # Obtem o IP da interface eth0 (rede física)
   [[ -n "$IP" && "$IP" != "-" ]] && break
   sleep 2
 done
@@ -1981,8 +2002,17 @@ bind -x '"\C-l": "clear && source ~/.bashrc"'
 alias docker-compose='docker compose'
 #-- ------------------------------------------------------------
 
+
+# Inspecionar YML Docker
+yml(){ FILE="${1:-.}"; [[ -d "$FILE" ]] && FILE="$FILE/docker-compose.yml"; [[ ! -f "$FILE" ]] || ! cat "$FILE" &>/dev/null && echo -e "\033[38;2;255;140;0m\n  Exemplo de uso:   yml \"/seu/docker-compose.yml\" \n\033[0m" || { DCKYML="$FILE"; echo ""; awk 'NR==1,/^services:/{gsub(/^#[ ]*/,""); if($0!~/^$/){if($0=="services:"){print ""; print "\033[94m  "$0"\033[0m"} else {print "\033[94m  "$0"\033[0m"}}} /^[[:space:]]*container_name:[[:space:]]*/{gsub(/^[[:space:]]*container_name:[[:space:]]*/,"\t"); print $0; cname_seen=1} /^[[:space:]]{0,2}[^[:space:]]+:[[:space:]]*$/ && $0 !~ /^services:/ {service_name=$1; cname_seen=0} /^[[:space:]]*container_name:[[:space:]]*$/ {cname_seen=0} END{if(cname_seen==0 && service_name!=""){print "\t"service_name}}' "$DCKYML" | sed '/^$/N;/^\n$/D'; echo ""; } }
+
+
 # Verificar o config do serviço SSH
 sshd -t
+
+
+
+
 
 
 
