@@ -509,7 +509,7 @@ restart(){
 }
 
 start(){ 
-    echo "Start (implementando LXC no Boot)"; 
+    echo -e "\nStart (implementando LXC no Boot)"; 
     ###########################################################################################################
     # [AUTO-FIX] BOOT de inicialização antes do systemd LXC 
 
@@ -599,6 +599,8 @@ EOF
         #echo -e "# Alias LXC \nalias lxc='/lxc_machine.sh'\nalias LXC='/lxc_machine.sh'\n\n\n\n\n\n" >> /root/.bashrc
         echo -e "# Alias LXC (alias \"especial\")\nlxc(){\n    if [[ "\$1" == \"bin\" ]]; then\n        shift\n        /usr/bin/lxc \"\$@\"   # Alias lxc binario clássico (lxc bin)\n    else\n        $SELFSCRIPT_NAME \"\$@\"  # Alias gestor de conteiners (lxc)\n    fi\n}\nLXC(){ lxc \"\$@\"; }\n\n\n\n\n\n" >> /root/.bashrc
     fi
+
+    echo ""
 
     source /root/.bashrc
     exit 0
