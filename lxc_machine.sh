@@ -594,7 +594,7 @@ EOF
 
     # evita duplicar alias
     if grep -Eiq '^[[:space:]]*(alias[[:space:]]+lxc=|lxc[[:space:]]*\(\)[[:space:]]*\{)' /root/.bashrc; then 
-        echo -e "${GREEN} [OK] Alias da função lxc já presente. ${NC}" 
+        echo -e "${GREEN} [OK] Alias para lxc já presente. ${NC}" 
     else
         #echo -e "# Alias LXC \nalias lxc='/lxc_machine.sh'\nalias LXC='/lxc_machine.sh'\n\n\n\n\n\n" >> /root/.bashrc
         echo -e "# Alias LXC (alias \"especial\")\nlxc(){\n    if [[ "\$1" == \"bin\" ]]; then\n        shift\n        /usr/bin/lxc \"\$@\"   # Alias lxc binario clássico (lxc bin)\n    else\n        $SELFSCRIPT_NAME \"\$@\"  # Alias gestor de conteiners (lxc)\n    fi\n}\nLXC(){ lxc \"\$@\"; }\n\n\n\n\n\n" >> /root/.bashrc
