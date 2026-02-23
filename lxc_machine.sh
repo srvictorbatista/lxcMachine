@@ -513,8 +513,12 @@ start(){
     ###########################################################################################################
     # [AUTO-FIX] BOOT de inicialização antes do systemd LXC 
 
-    # Cria a service systemd para preparar storage antes do LXC
-    cat << EOF > /etc/systemd/system/lxc-machine-boot.service.bkp
+    # Cria uma service systemd alternativa para preparar storage antes do LXC (apenas multi-agente e rede)
+    [ -f /etc/systemd/system/lxc-machine-boot.service.bkp ] || cat << EOF > /etc/systemd/system/lxc-machine-boot.service.bkp
+### Este é um iunit reserva. E só deve ser habilitado em caso do de produção apresentar falhas.
+# Caso a implementação ocorra sem problas, este arquivo será sobrescrito automaticamente em uma eventual reexecução.
+# Gerado em: $(date +%Y%m%d_%H%M%S)
+
 [Unit]
 Description=Prepara storage LXC (loop + LVM) após boot completo do host
 After=multi-user.target network-online.target
@@ -529,7 +533,11 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
 
-    # Cria a service systemd para preparar storage antes do LXC
+    # cópia da ultima versão do service unit (apenas se já existir)
+    [ -f /etc/systemd/system/lxc-machine-boot.service ] && cp -f /etc/systemd/system/lxc-machine-boot.service "/etc/systemd/system/lxc-machine-boot.service.bkp" 2>/dev/null || true
+
+
+    # Cria ou sobrescreve a service systemd para preparar storage antes do LXC (multi-agente, volumes e rede. Prepara LVM2 e DHPC)
     cat << EOF > /etc/systemd/system/lxc-machine-boot.service
 [Unit]
 Description=Prepara storage LXC (loop + LVM) após boot completo do host
@@ -584,12 +592,16 @@ EOF
     ###########################################################################################################
 
 
-    #echo -e "# Alias LXC \nalias lxc='/lxc_machine.sh'\nalias LXC='/lxc_machine.sh'\n\n\n\n\n\n" >> /root/.bashrc
-
-    echo -e "# Alias LXC (alias \"especial\")\nlxc(){\n    if [[ "\$1" == \"bin\" ]]; then\n        shift\n        /usr/bin/lxc \"\$@\"   # Alias lxc binario clássico (lxc bin)\n    else\n        $SELFSCRIPT_NAME \"\$@\"  # Alias gestor de conteiners (lxc)\n    fi\n}\nLXC(){ lxc \"\$@\"; }\n\n\n\n\n\n" >> /root/.bashrc
+    # evita duplicar alias
+    if grep -Eiq '^[[:space:]]*(alias[[:space:]]+lxc=|lxc[[:space:]]*\(\)[[:space:]]*\{)' /root/.bashrc; then 
+        echo -e "${GREEN} [OK] Alias da função lxc já presente. ${NC}" 
+    else
+        #echo -e "# Alias LXC \nalias lxc='/lxc_machine.sh'\nalias LXC='/lxc_machine.sh'\n\n\n\n\n\n" >> /root/.bashrc
+        echo -e "# Alias LXC (alias \"especial\")\nlxc(){\n    if [[ "\$1" == \"bin\" ]]; then\n        shift\n        /usr/bin/lxc \"\$@\"   # Alias lxc binario clássico (lxc bin)\n    else\n        $SELFSCRIPT_NAME \"\$@\"  # Alias gestor de conteiners (lxc)\n    fi\n}\nLXC(){ lxc \"\$@\"; }\n\n\n\n\n\n" >> /root/.bashrc
+    fi
 
     source /root/.bashrc
-    exit 1
+    exit 0
 }
 clearing(){
       ## Verificar volumes logicos
